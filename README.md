@@ -1,0 +1,2 @@
+# Kaikoura
+Kaikoura earthquake repository
