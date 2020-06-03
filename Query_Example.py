@@ -19,7 +19,7 @@ import os
 # %% parameters we can set#########################################################
 
 ### Saving info
-directorytosaveto = '/Users/Lenni/Desktop/Kaikoura'  ### we will save waveforms as well as various pandas structures
+directorytosaveto = '/Users/Lenni/Documents/PycharmProjects/Kaikoura'  ### we will save waveforms as well as various pandas structures
 # NOTE: python does not like ~s for paths so you have to be super explicit
 saveformat = 'SAC'  # also MSEED, these are common data formats. The machine learning code will tell you which format to use
 
