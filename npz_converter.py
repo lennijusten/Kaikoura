@@ -25,18 +25,21 @@ import os
 # FOR TRAINING
 # todo 1) add expert picks for p and s waves into seperate col. in the npz file and channels!
 
+# ACTUAL
+# todo check additional requirements for phasenet (CSV and samples)
+# todo write logfile to event folder
+# todo automate for multiple folders (add extra wildcard in path to access all event folders)
 
-# todo check starttime and endtime window
-# todo come up with better filename for npz files
-# todo check additional requirements for phasenet
+
+
 dir_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Traces/2017p357939/*.SAC'
 
 st = obspy.read(dir_path)
 
 directions = ['N', 'E', 'Z']
-chan_list = ['EH?', 'BN?']  # add channels in three letter format. Script will look for all E,N,Z channels
+chan_list = ['EH?']  # add channels in three letter format. Script will look for all E,N,Z channels
 
-npz_save_path = '/Users/Lenni/Downloads'
+npz_save_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/NPZ'
 
 station = []
 for tr in st:
@@ -51,28 +54,40 @@ len_count = 0
 len_sta = []
 overfull_count = 0
 overfull_sta = []
+
+
+def stationChannels(stream):
+    channel = []
+    short_cha = []
+    for tr in stream:
+        channel.append(tr.stats.channel)
+        short_cha.append(tr.stats.channel[:-1])
+
+    uniq_channels = list(set(short_cha))
+    print("Number of instruments: ", len(uniq_channels))
+
+    print("Channels in stream: ")
+    print(channel)
+
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    pass
+
+
 for sta in unique_station:
     set_count = 0
     st_filtered_station = st.select(station=sta)
     print("-------------------------------------------------------")
     print("-------------------------------------------------------")
     print("Station name: ", sta)
-    print("Number of traces from station: ", len(st_filtered_station))
+    print("Number of traces in station: ", len(st_filtered_station))
 
-    channel = []
-    for tr in st_filtered_station:
-        channel.append(tr.stats.channel)
+    stationChannels(st_filtered_station)
 
-    print("Channels in stream: ")
-    print(channel)
-
-    uniq_channels = list(set(channel))
-    print("Number of instruments: ", len(uniq_channels))
-    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     for cha in chan_list:
         st_filtered_channel = st_filtered_station.select(channel=cha)
 
         if len(st_filtered_channel) == 3:
+            net = st_filtered_channel[0].stats.network
             start = [st_filtered_channel[0].stats.starttime, st_filtered_channel[1].stats.starttime,
                      st_filtered_channel[2].stats.starttime]
             start_dif = [abs(start[0] - start[1]), abs(start[1] - start[2]), abs(start[0] - start[2])]
@@ -93,7 +108,8 @@ for sta in unique_station:
                         trace_data = np.reshape(tr2.data, (-1, 1))
                         data_log = np.append(data_log, trace_data, 1)
 
-                    stream_name = sta + '_' + cha + '_' + str(np.size(data_log, 0)) + '.npz'
+                    # filename format: network_station_channel(?)_samples.npz
+                    stream_name = net + '_' + sta + '_' + cha[:-1] + '_' + str(np.size(data_log, 0)) + '.npz'
                     np.savez(os.path.join(npz_save_path, stream_name), data=data_log)
                     print("Full set of E,N,Z found for channel [{}]. Writing to ".format(cha))
                     print(os.path.join(npz_save_path, stream_name))
@@ -121,7 +137,6 @@ for sta in unique_station:
         else:
             print("Unknown error finding number of channels ")
 
-
     total += set_count
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     print("Total number of files written for station: ", set_count)
@@ -129,16 +144,16 @@ for sta in unique_station:
 print("-------------------------------------------------------")
 print("-------------------------------------------------------")
 print("<<< Process finished >>>")
+print("Number of traces/files in dir: ", len(st))
 print("Channel filter: ", chan_list)
-print("Total number of complete E,N,Z sets written: ", total)
+print("Total number of complete E,N,Z sets written: {} ({} traces)".format(total, total*3))
 print("Number of instruments with incomplete E,N,Z channels: ", incomplete_count)
 print("Number of instruments with different sample lengths or start-times: ", len_count)
 print("Stations: ", len_sta)
 print("Number of instruments with >3 channels: ", overfull_count)
 print("Stations: ", overfull_sta)
 
-filepath = '/Users/Lenni/Downloads/WHVZ_LH_271.npz'
-
+filepath = '/Users/Lenni/Downloads/NZ_DUWZ_EH_27001.npz'
 
 def npzReader(path):
     npz_file = np.load(path)
