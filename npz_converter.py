@@ -34,6 +34,8 @@ dir_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Traces/2017p357939/*
 st = obspy.read(dir_path)
 
 directions = ['N', 'E', 'Z']
+chan_list = ['EH?', 'BN?']  # add channels in three letter format. Script will look for all E,N,Z channels
+
 npz_save_path = '/Users/Lenni/Downloads'
 
 station = []
@@ -58,19 +60,17 @@ for sta in unique_station:
     print("Number of traces from station: ", len(st_filtered_station))
 
     channel = []
-    short_cha = []
     for tr in st_filtered_station:
         channel.append(tr.stats.channel)
-        short_cha.append(tr.stats.channel[:-1])
 
     print("Channels in stream: ")
     print(channel)
 
-    uniq_channels = list(set(short_cha))
+    uniq_channels = list(set(channel))
     print("Number of instruments: ", len(uniq_channels))
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-    for cha in uniq_channels:
-        st_filtered_channel = st_filtered_station.select(channel=cha + '?')
+    for cha in chan_list:
+        st_filtered_channel = st_filtered_station.select(channel=cha)
 
         if len(st_filtered_channel) == 3:
             start = [st_filtered_channel[0].stats.starttime, st_filtered_channel[1].stats.starttime,
@@ -95,36 +95,41 @@ for sta in unique_station:
 
                     stream_name = sta + '_' + cha + '_' + str(np.size(data_log, 0)) + '.npz'
                     np.savez(os.path.join(npz_save_path, stream_name), data=data_log)
-                    print("Full set of E,N,Z found for channel [", cha + "?].", " Writing to ")
+                    print("Full set of E,N,Z found for channel [{}]. Writing to ".format(cha))
                     print(os.path.join(npz_save_path, stream_name))
                 else:
-                    print("Start-times in channel [", cha + "?]",
-                          " matched but did not contain same number of samples. Skipping...")
+                    print("Start-times in channel [{}] matched but did not contain same number of samples. "
+                          "Skipping...".format(cha))
                     print(st_filtered_channel)
                     len_count += 1
                     len_sta.append(sta)
             elif max(start_dif) >= max(delta):
-                print("Start-times in channel [", cha + "?]", " don't match. Skipping...")
+                print("Start-times in channel [{}] don't match. Skipping...".format(cha))
                 print(st_filtered_channel)
                 len_count += 1
                 len_sta.append(sta)
             else:
-                print("Unknown false condition in channel [", cha + "?].", " Skipping...")
+                print("Unknown false condition in channel [{}]. Skipping...".format(cha))
+        elif 0 <= len(st_filtered_channel) < 3:
+            print("Channel [{}] in station {} did not contain a full set of E,N,Z. Skipping...".format(cha, sta))
+            incomplete_count += 1
         elif len(st_filtered_channel) > 3:
-            print("More than three traces in channel [", cha + "?].", " Check for duplicates. Skipping...")
+            print("More than three traces in channel [{}]. Check for duplicates. Skipping...".format(cha))
             print(st_filtered_channel.__str__(extended=True))
             overfull_count += 1
             overfull_sta.append(sta)
         else:
-            print("Channel ", cha + "?", " in ", sta, " did not contain a full set of E,N,Z. Skipping...")
-            incomplete_count += 1
+            print("Unknown error finding number of channels ")
+
 
     total += set_count
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     print("Total number of files written for station: ", set_count)
 
-print("[][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][][]")
+print("-------------------------------------------------------")
+print("-------------------------------------------------------")
 print("<<< Process finished >>>")
+print("Channel filter: ", chan_list)
 print("Total number of complete E,N,Z sets written: ", total)
 print("Number of instruments with incomplete E,N,Z channels: ", incomplete_count)
 print("Number of instruments with different sample lengths or start-times: ", len_count)
