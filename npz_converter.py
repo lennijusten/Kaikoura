@@ -73,7 +73,7 @@ def stationChannels(stream):
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     pass
 
-
+samples = []
 for sta in unique_station:
     set_count = 0
     st_filtered_station = st.select(station=sta)
@@ -109,14 +109,20 @@ for sta in unique_station:
                         trace_data = np.reshape(tr2.data, (-1, 1))
                         data_log = np.append(data_log, trace_data, 1)
 
+                    samples.append(np.size(data_log, 0))
                     # filename format: network_station_channel(?)_samples.npz
                     stream_name = net + '_' + sta + '_' + cha[:-1] + '_' + str(np.size(data_log, 0)) + '.npz'
                     np.savez(os.path.join(npz_save_path, stream_name), data=data_log)
                     print("Full set of E,N,Z found for channel [{}]. Writing to ".format(cha))
                     print(os.path.join(npz_save_path, stream_name))
-                else:
+                elif not samp_len:
                     print("Start-times in channel [{}] matched but did not contain same number of samples. "
                           "Skipping...".format(cha))
+                    print(st_filtered_channel)
+                    len_count += 1
+                    len_sta.append(sta)
+                else:
+                    print("Unknown error matching E,N,Z lengths for channel {}. Skipping...".format(cha))
                     print(st_filtered_channel)
                     len_count += 1
                     len_sta.append(sta)
@@ -136,7 +142,7 @@ for sta in unique_station:
             overfull_count += 1
             overfull_sta.append(sta)
         else:
-            print("Unknown error finding number of channels. Skipping...")
+            print("Unknown error finding number of channels in {}. Skipping...".format(cha))
 
     total += set_count
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
@@ -145,6 +151,10 @@ for sta in unique_station:
 print("-------------------------------------------------------")
 print("-------------------------------------------------------")
 print("<<< Process finished >>>")
+
+if not len(set(samples)) == 1:
+    print("*** WARNING: Not all samples are the same length. Check output folder. ***")
+
 print("Number of traces/files in dir: ", len(st))
 print("Channel filter: ", chan_list)
 print("Total number of complete E,N,Z sets written: {} ({} traces)".format(total, total * 3))
@@ -165,7 +175,7 @@ def npzReader(path):
     return data
 
 
-def csvWriter(source,destination):
+def csvWriter(source, destination):
     files = []
     for file in os.listdir(source):
         if file.endswith(".npz"):
