@@ -14,6 +14,7 @@
 import obspy
 import numpy as np
 import os
+import csv
 
 # FOR PREDICTIONS
 # todo 1) gather all the traces (3 channels) from the same station
@@ -31,7 +32,6 @@ import os
 # todo automate for multiple folders (add extra wildcard in path to access all event folders)
 
 
-
 dir_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Traces/2017p357939/*.SAC'
 
 st = obspy.read(dir_path)
@@ -39,7 +39,8 @@ st = obspy.read(dir_path)
 directions = ['N', 'E', 'Z']
 chan_list = ['EH?']  # add channels in three letter format. Script will look for all E,N,Z channels
 
-npz_save_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/NPZ'
+npz_save_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/NPZ'
+dataset_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset'
 
 station = []
 for tr in st:
@@ -135,7 +136,7 @@ for sta in unique_station:
             overfull_count += 1
             overfull_sta.append(sta)
         else:
-            print("Unknown error finding number of channels ")
+            print("Unknown error finding number of channels. Skipping...")
 
     total += set_count
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
@@ -146,7 +147,7 @@ print("-------------------------------------------------------")
 print("<<< Process finished >>>")
 print("Number of traces/files in dir: ", len(st))
 print("Channel filter: ", chan_list)
-print("Total number of complete E,N,Z sets written: {} ({} traces)".format(total, total*3))
+print("Total number of complete E,N,Z sets written: {} ({} traces)".format(total, total * 3))
 print("Number of instruments with incomplete E,N,Z channels: ", incomplete_count)
 print("Number of instruments with different sample lengths or start-times: ", len_count)
 print("Stations: ", len_sta)
@@ -155,6 +156,7 @@ print("Stations: ", overfull_sta)
 
 filepath = '/Users/Lenni/Downloads/NZ_DUWZ_EH_27001.npz'
 
+
 def npzReader(path):
     npz_file = np.load(path)
     print("Contents: ", npz_file.files)
@@ -162,4 +164,24 @@ def npzReader(path):
     print("Shape: ", data.shape)
     return data
 
+
+def csvWriter(source,destination):
+    files = []
+    for file in os.listdir(source):
+        if file.endswith(".npz"):
+            files.append(file)
+
+    with open(os.path.join(destination, 'waveform.csv'), 'w') as f:
+        writer = csv.writer(f)
+        writer.writerow(['fname'])
+        for file in files:
+            writer.writerow([file])
+    print("waveform.csv written to {}".format(destination))
+
+
+csvWriter(npz_save_path,dataset_path)
 # npzReader(filepath)
+
+#conda activate venv
+#cd /Users/Lenni/Documents/PycharmProjects/Kaikoura
+#python PhaseNet/run.py --mode=pred --model_dir=PhaseNet/model/190703-214543 --data_dir=Dataset/NPZ --data_list=Dataset/waveform.csv --output_dir=output --plot_figure --save_result --batch_size=20 --input_length=27001
