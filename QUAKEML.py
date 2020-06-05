@@ -11,8 +11,8 @@ class QuakeML:
         def __init__(self,quakemlcat):
                 
                 ## initialize fields
-                quakeml ={'event_id':[],'event_latitude':[],'event_longitude':[],'event_depth':[],'event_origin_time':[],\
-                          'station':[],'time':[],'phase':[],'error':[],'arrival_latitude':[],\
+                quakeml ={'event_id':[],'event_latitude':[],'event_longitude':[],'event_depth':[],'event_origin_time':[],'event_magnitude':[],\
+                          'station':[],'time':[],'phase':[],'error':[],'arrival_latitude':[],'channel':[],\
                                   'arrival_longitude':[],'method':[],'event_sx':[],'event_sy':[],'event_sz':[],'network':[]}
                 
         
@@ -33,7 +33,7 @@ class QuakeML:
                 
                 import pandas as pd
                 
-                arrival_keys = ['event_id','station','phase','time','error','method','network']
+                arrival_keys = ['event_id','station','phase','time','error','method','network','channel']
                 arrival = self.quakemlcatalog.copy()
                 
                 for key in self.quakemlcatalog.keys():
@@ -57,6 +57,7 @@ class QuakeML:
                                 del events[key]
                 Events = pd.DataFrame(events)
                 Events = Events.drop_duplicates(subset = ['event_id'], keep = 'first')
+                Events = Events.reset_index(drop = True)
                 
                 return Events
 
@@ -117,6 +118,12 @@ class QuakeML:
                 if field == 'phase':
                         value = [pick.phase_hint for pick in event.picks]
                         found= 1
+                if field == 'channel':
+                        value = [pick.waveform_id.channel_code for pick in event.picks]
+                        found = 1
+                if field == 'event_magnitude':
+                        value = event.preferred_magnitude().mag
+                        found = 1
                 if found == 0:
                         value = nan
                         
