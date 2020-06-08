@@ -1,11 +1,10 @@
 # npz file writer
 # Author: Lennart Justen
-# Last revision: 6/2/20
+# Last revision: 6/5/20
 
-# Description:
-# This script takes a directory path and converts the contents into a three channel .npz file.
-# Only complete sets of E,N,Z channels from a single instrument with the same number of
-# samples are written. Finally the .npz reader opens a single npz file to check its contents.
+# Description: This script takes a directory path or a directory of event directories and converts the contents into
+# a three channel .npz file. Only complete sets of E,N,Z channels from a single instrument with the same number of
+# samples are written. The csvWriter then writes a PhaseNet formatted csv file based on the NPZ folder contents
 
 # Documentation
 # https://numpy.org/doc/stable/reference/generated/numpy.savez.html
@@ -15,22 +14,20 @@ import obspy
 import numpy as np
 import os
 import csv
-import subprocess
+import pandas as pd
 
 # ACTUAL
-# todo write logfile to event folder
-# todo automate for multiple folders (add extra wildcard in path to access all event folders)
 # todo mark waveform.csv and NPZ directory with event ID. Load in pickles
 
-
+# source can be a single event folder or a folder of event folders
 sac_source = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/'
-# for multiple events use mode = 0
-# for a single event use mode = 1
+
 chan_list = ['EH?']  # add channels in three letter format. Script will look for all E,N,Z channels
 directions = ['N', 'E', 'Z']
 
 npz_save_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/NPZ'
 dataset_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset'
+output_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/PhaseNet/output'
 
 
 # Write current csv file from NPZ folder
@@ -49,6 +46,17 @@ def csvWriter(source, destination):
         print("waveform.csv written to {}".format(destination))
     except:
         print("Error writing waveform.csv. Check that directory exists.")
+
+
+def csvSync(dataset, output, sorted_headers):
+    log = pd.read_csv(os.path.join(dataset, 'data_log.csv'))
+    picks = pd.read_csv(os.path.join(output, 'picks.csv'))
+    print("\nMerging picks.csv with data_log.csv...")
+    df = log.combine_first(picks)[sorted_headers]
+
+    df.to_pickle(os.path.join(dataset, "data_log_merged.pickle"))
+    df.to_csv(os.path.join(dataset, "data_log_merged.csv"), index=False)
+    print("Merge successful. Copying files to ", dataset)
 
 
 # npzReader for single npz file
@@ -107,6 +115,9 @@ def stationChannels(stream):
     pass
 
 
+headers = ['network', 'event_id', 'station', 'channel', 'samples', 'start', 'end', 'itp', 'p_time', 'tp_prob',
+           'its', 's_time', 'ts_prob', 'fname']
+row_list = []
 samples = []
 for event in events:
     if single:
@@ -115,7 +126,6 @@ for event in events:
         st = obspy.read(os.path.join(sac_source, event, '*.SAC'))
     trace_count += len(st)
 
-    # print('\n\n')
     print("\n\nFetching traces from event {}...".format(event))
     print("Found {} traces. Reading... \n\n".format(len(st)))
 
@@ -165,6 +175,10 @@ for event in events:
                         stream_name = net + '_' + sta + '_' + cha[:-1] + '_' + event + '_' + str(
                             np.size(data_log, 0)) + '.npz'
                         np.savez(os.path.join(npz_save_path, stream_name), data=data_log)
+                        row_list.append(
+                            [net, event, sta, cha, np.size(data_log, 0), tr2.stats.starttime, tr2.stats.endtime,
+                             np.nan , np.nan, np.nan, np.nan, np.nan, np.nan, stream_name])
+
                         print("Full set of E,N,Z found for channel [{}]. Writing to ".format(cha))
                         print(os.path.join(npz_save_path, stream_name))
                     elif not samp_len:
@@ -200,6 +214,8 @@ for event in events:
         print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         print("Total number of files written for station: ", set_count)
 
+df = pd.DataFrame(row_list, columns=headers)
+
 print("-------------------------------------------------------")
 print("-------------------------------------------------------")
 print("<<< Process finished >>>\n")
@@ -218,9 +234,16 @@ print("\nNumber of instruments with >3 channels: ", overfull_count)
 print("Stations: ")
 print(*overfull_sta, sep="\n")
 
-csvWriter(npz_save_path, dataset_path)
+df.to_pickle(os.path.join(dataset_path, "data_log.pickle"))
+print("data_log.pickle written to ", dataset_path)
+df.to_csv(os.path.join(dataset_path, "data_log.csv"), index=False)
+print("data_log.csv written to ", dataset_path)
 
+csvWriter(npz_save_path, dataset_path)
+csvSync(dataset_path, output_path, headers)
 
 # conda activate venv
 # cd /Users/Lenni/Documents/PycharmProjects/Kaikoura
-# python PhaseNet/run.py --mode=pred --model_dir=PhaseNet/model/190703-214543 --data_dir=Dataset/NPZ --data_list=Dataset/waveform.csv --output_dir=output --plot_figure --save_result --batch_size=30 --input_length=27001
+# python PhaseNet/run.py --mode=pred --model_dir=PhaseNet/model/190703-214543 --data_dir=Dataset/NPZ --tp_prob=0.3 --ts_prob=0.3 --data_list=Dataset/waveform.csv --output_dir=PhaseNet/output --plot_figure --save_result --batch_size=30 --input_length=27001
+
+
