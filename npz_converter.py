@@ -29,6 +29,10 @@ directions = ['N', 'E', 'Z']
 npz_save_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/NPZ'
 dataset_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset'
 output_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/PhaseNet/output'
+arrival_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/Arrival.pickle'
+
+headers = ['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end', 'phase', 'time',
+           'itp', 'p_time', 'tp_prob', 'its', 's_time', 'ts_prob', 'fname']
 
 
 # Write current csv file from NPZ folder
@@ -49,24 +53,29 @@ def csvWriter(source, destination):
         print("Error writing waveform.csv. Check that directory exists.")
 
 
-def csvSync(dataset, output, sorted_headers):
+def csvSync(dataset, output, arrival, sorted_headers):
     log = pd.read_csv(os.path.join(dataset, 'data_log.csv'))
     picks = pd.read_csv(os.path.join(output, 'picks.csv'))
+    arrivals = pd.read_pickle(arrival)
+    arrivals = arrivals.drop(columns=['error', 'method'], axis=1)
+
+    arrivals['channel'] = [x.replace(x[len(x) - 1], '?') for x in arrivals['channel']]
+
     print("\nMerging picks.csv with data_log.csv...")
-    df = log.combine_first(picks)[sorted_headers]
+    df = pd.merge(log, picks, how='left', on=['fname'])
 
     print("Reformatting data from csv files...")
-    for col in ['start','end']:
+    for col in ['start', 'end']:
         df[col] = [obspy.UTCDateTime(x) for x in df[col]]
 
-    for col2 in ['itp','its']:
+    for col2 in ['itp', 'its']:
         try:
             df[col2] = [list(map(int, shlex.split(x.strip('[]')))) for x in df[col2]]
         except AttributeError:
             print("Pick sample data is already in the correct format. Passing")
             pass
 
-    for col3 in ['tp_prob','ts_prob']:
+    for col3 in ['tp_prob', 'ts_prob']:
         try:
             df[col3] = [list(map(float, shlex.split(x.strip('[]')))) for x in df[col3]]
         except AttributeError:
@@ -80,7 +89,7 @@ def csvSync(dataset, output, sorted_headers):
         s_lst = df['its'][row]
         p_lst2, s_lst2 = [], []
         for p_element in p_lst:
-            p_lst2.append(df['start'][row] + float(p_element)*df['delta'][row])
+            p_lst2.append(df['start'][row] + float(p_element) * df['delta'][row])
         for s_element in s_lst:
             s_lst2.append(df['start'][row] + float(s_element) * df['delta'][row])
         utc_p_picks.append(p_lst2)
@@ -89,6 +98,10 @@ def csvSync(dataset, output, sorted_headers):
     df['p_time'] = utc_p_picks
     df['s_time'] = utc_s_picks
 
+    print("Merging with arrival.pickle...")
+    df = pd.merge(df, arrivals, how='left', on=['event_id', 'station', 'network', 'channel'])
+
+    df = df[sorted_headers]
     df.to_pickle(os.path.join(dataset, "data_log_merged.pickle"))
     df.to_csv(os.path.join(dataset, "data_log_merged.csv"), index=False)
     print("Merge successful. Copying files to ", dataset)
@@ -99,9 +112,9 @@ def csvSync(dataset, output, sorted_headers):
 def npzReader(path):
     npz_file = np.load(path)
     print("Contents: ", npz_file.files)
-    #data = npz_file['data']
-    #print("Shape: ", data.shape)
-    #return data
+    data = npz_file['data']
+    print("Shape: ", data.shape)
+    return data
 
 
 try:
@@ -151,8 +164,6 @@ def stationChannels(stream):
     pass
 
 
-headers = ['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end',
-           'itp', 'p_time', 'tp_prob', 'its', 's_time', 'ts_prob', 'fname']
 row_list = []
 samples = []
 for event in events:
@@ -213,7 +224,7 @@ for event in events:
                         np.savez(os.path.join(npz_save_path, stream_name), data=data_log)
                         row_list.append(
                             [net, event, sta, cha, np.size(data_log, 0), tr2.stats.delta, tr2.stats.starttime,
-                             tr2.stats.endtime, np.nan, [], np.nan, np.nan, [], np.nan, stream_name])
+                             tr2.stats.endtime, stream_name])
 
                         print("Full set of E,N,Z found for channel [{}]. Writing to ".format(cha))
                         print(os.path.join(npz_save_path, stream_name))
@@ -250,7 +261,8 @@ for event in events:
         print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         print("Total number of files written for station: ", set_count)
 
-df = pd.DataFrame(row_list, columns=headers)
+df = pd.DataFrame(row_list, columns=['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end',
+                                      'fname'])
 
 print("-------------------------------------------------------")
 print("-------------------------------------------------------")
@@ -276,10 +288,8 @@ df.to_csv(os.path.join(dataset_path, "data_log.csv"), index=False)
 print("data_log.csv written to ", dataset_path)
 
 csvWriter(npz_save_path, dataset_path)
-df2 = csvSync(dataset_path, output_path, headers)
+df2 = csvSync(dataset_path, output_path, arrival_path, headers)
 
 # conda activate venv
 # cd /Users/Lenni/Documents/PycharmProjects/Kaikoura
 # python PhaseNet/run.py --mode=pred --model_dir=PhaseNet/model/190703-214543 --data_dir=Dataset/NPZ --tp_prob=0.3 --ts_prob=0.3 --data_list=Dataset/waveform.csv --output_dir=PhaseNet/output --plot_figure --save_result --batch_size=30 --input_length=27001
-
-
