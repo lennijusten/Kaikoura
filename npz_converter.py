@@ -31,8 +31,8 @@ dataset_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset'
 output_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/PhaseNet/output'
 arrival_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/Arrival.pickle'
 
-headers = ['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end', 'phase', 'time',
-           'itp', 'p_time', 'tp_prob', 'its', 's_time', 'ts_prob', 'fname']
+headers = ['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end', 'residual', 'phase', 'time',
+           'p_time', 'tp_prob', 's_time', 'ts_prob', 'itp', 'its', 'fname']
 
 
 # Write current csv file from NPZ folder
@@ -54,6 +54,9 @@ def csvWriter(source, destination):
 
 
 def csvSync(dataset, output, arrival, sorted_headers):
+    diff_method = 0
+    empty_count = 0
+
     log = pd.read_csv(os.path.join(dataset, 'data_log.csv'))
     picks = pd.read_csv(os.path.join(output, 'picks.csv'))
     arrivals = pd.read_pickle(arrival)
@@ -101,11 +104,37 @@ def csvSync(dataset, output, arrival, sorted_headers):
     print("Merging with arrival.pickle...")
     df = pd.merge(df, arrivals, how='left', on=['event_id', 'station', 'network', 'channel'])
 
-    df = df[sorted_headers]
+    diffs = []
+    diff = []
+    for row2 in range(len(df['p_time'])):
+        ptimes = df['p_time'][row2]
+        stimes = df['s_time'][row2]
+        pdiff_lst, sdiff_lst = [], []
+        for pt in ptimes:
+            pdiff_lst.append(df['time'][row2]-pt)
+        diffs.append(pdiff_lst)
+        if diff_method == 0:
+            try:
+                diff.append(pdiff_lst[0])
+            except IndexError:
+                empty_count += 1
+                diff.append(np.nan)
+        elif diff_method == 1:
+            try:
+                diff.append(pdiff_lst[df['tp_prob'][row2].index(max(df['tp_prob'][row2]))])
+            except ValueError:
+                empty_count += 1
+                diff.append(np.nan)
+        else:
+            print("Invalid diff_method.")
+
+    df['residual'] = diffs
+
+    df = df[sorted_headers].sort_values(['event_id', 'station'])
     df.to_pickle(os.path.join(dataset, "data_log_merged.pickle"))
     df.to_csv(os.path.join(dataset, "data_log_merged.csv"), index=False)
     print("Merge successful. Copying files to ", dataset)
-    return df
+    return df, diff, empty_count
 
 
 # npzReader for single npz file
@@ -262,7 +291,7 @@ for event in events:
         print("Total number of files written for station: ", set_count)
 
 df = pd.DataFrame(row_list, columns=['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end',
-                                      'fname'])
+                                     'fname'])
 
 print("-------------------------------------------------------")
 print("-------------------------------------------------------")
@@ -288,8 +317,11 @@ df.to_csv(os.path.join(dataset_path, "data_log.csv"), index=False)
 print("data_log.csv written to ", dataset_path)
 
 csvWriter(npz_save_path, dataset_path)
-df2 = csvSync(dataset_path, output_path, arrival_path, headers)
+df2, residual, empty = csvSync(dataset_path, output_path, arrival_path, headers)
 
+np.histogram(np.array(residual)[~np.isnan(residual)])
+res = np.nansum([i ** 2 for i in residual])
+print("SSR = ", res)
 # conda activate venv
 # cd /Users/Lenni/Documents/PycharmProjects/Kaikoura
 # python PhaseNet/run.py --mode=pred --model_dir=PhaseNet/model/190703-214543 --data_dir=Dataset/NPZ --tp_prob=0.3 --ts_prob=0.3 --data_list=Dataset/waveform.csv --output_dir=PhaseNet/output --plot_figure --save_result --batch_size=30 --input_length=27001
