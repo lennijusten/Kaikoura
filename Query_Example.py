@@ -19,7 +19,7 @@ import os
 # %% parameters we can set#########################################################
 
 ### Saving info
-directorytosaveto = '/Users/Lenni/Documents/PycharmProjects/Kaikoura'  ### we will save waveforms as well as various pandas structures
+directorytosaveto = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events'  ### we will save waveforms as well as various pandas structures
 # NOTE: python does not like ~s for paths so you have to be super explicit
 saveformat = 'SAC'  # also MSEED, these are common data formats. The machine learning code will tell you which format to use
 
@@ -108,7 +108,7 @@ for iarr,_ in enumerate(Arrival['event_id']):
 
     station = Arrival['station'].values[iarr]  # grab station name
     network = Arrival['network'].values[iarr]  # grab network
-    phase = Arrival['phase'].values[iarr]  # grab phase
+    # phase = Arrival['phase'].values[iarr]  # grab phase
     event_id = Arrival['event_id'].values[iarr]  # grab event_id
 
     ievt = np.where(Events['event_id'].values == Arrival['event_id'].values[iarr])[0][0]
