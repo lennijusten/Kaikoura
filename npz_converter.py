@@ -31,8 +31,13 @@ dataset_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset'
 output_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/PhaseNet/output'
 arrival_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/Arrival.pickle'
 
-headers = ['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end', 'residual', 'phase', 'time',
-           'p_time', 'tp_prob', 's_time', 'ts_prob', 'itp', 'its', 'fname']
+headers = ['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end', 'P_residual', 'P_time',
+           'P_phasenet', 'tp_prob', 'itp', 'S_residual','S_time', 'S_phasenet', 'ts_prob', 'its', 'fname']
+
+# METHODS:
+# earliest -- Uses PhaseNet's earliest pick as the arrival pick
+# max_prob -- Uses the PhaseNet pick with the highest probability as the arrival pick
+method = 'earliest'
 
 
 # Write current csv file from NPZ folder
@@ -53,16 +58,15 @@ def csvWriter(source, destination):
         print("Error writing waveform.csv. Check that directory exists.")
 
 
-def csvSync(dataset, output, arrival, sorted_headers):
-    diff_method = 0
-    empty_count = 0
-
+def csvSync(dataset, output, arrival, sorted_headers, method):
     log = pd.read_csv(os.path.join(dataset, 'data_log.csv'))
     picks = pd.read_csv(os.path.join(output, 'picks.csv'))
     arrivals = pd.read_pickle(arrival)
-    arrivals = arrivals.drop(columns=['error', 'method'], axis=1)
+    arrivals = arrivals.drop(columns=['error_x', 'method_x', 'error_y', 'method_y'], axis=1)
+    # arrivals['channel_y'] = arrivals['channel_y'].replace(np.nan, ' ', regex=True)
 
-    arrivals['channel'] = [x.replace(x[len(x) - 1], '?') for x in arrivals['channel']]
+    # arrivals['channel'] = [x.replace(x[len(x) - 1], '?') for x in arrivals['channel']]
+
 
     print("\nMerging picks.csv with data_log.csv...")
     df = pd.merge(log, picks, how='left', on=['fname'])
@@ -104,37 +108,72 @@ def csvSync(dataset, output, arrival, sorted_headers):
     print("Merging with arrival.pickle...")
     df = pd.merge(df, arrivals, how='left', on=['event_id', 'station', 'network', 'channel'])
 
-    diffs = []
-    diff = []
+    p_diffs = []
+    p_diff = []
+    s_diffs = []
+    s_diff = []
+    p_prob_list = []
+    s_prob_list = []
+    p_empty_count = 0
+    s_empty_count = 0
     for row2 in range(len(df['p_time'])):
         ptimes = df['p_time'][row2]
         stimes = df['s_time'][row2]
         pdiff_lst, sdiff_lst = [], []
         for pt in ptimes:
-            pdiff_lst.append(df['time'][row2]-pt)
-        diffs.append(pdiff_lst)
-        if diff_method == 0:
             try:
-                diff.append(pdiff_lst[0])
+                pdiff_lst.append(df['P_time'][row2]-pt)
+            except TypeError:
+                pass
+        p_diffs.append(pdiff_lst)
+        for st_ in stimes:
+            try:
+                sdiff_lst.append(df['S_time'][row2]-st_)
+            except TypeError:
+                pass
+        s_diffs.append(sdiff_lst)
+        if method == 'earliest':
+            try:
+                p_diff.append(pdiff_lst[0])
+                p_prob_list.append(df['tp_prob'][row2][0])
             except IndexError:
-                empty_count += 1
-                diff.append(np.nan)
-        elif diff_method == 1:
+                p_empty_count += 1
+                p_diff.append(np.nan)
+                p_prob_list.append(np.nan)
             try:
-                diff.append(pdiff_lst[df['tp_prob'][row2].index(max(df['tp_prob'][row2]))])
+                s_diff.append(sdiff_lst[0])
+                s_prob_list.append(df['ts_prob'][row2][0])
+            except IndexError:
+                s_empty_count += 1
+                s_diff.append(np.nan)
+                s_prob_list.append(np.nan)
+        elif method == 'max_prob':
+            try:
+                p_diff.append(pdiff_lst[df['tp_prob'][row2].index(max(df['tp_prob'][row2]))])
+                p_prob_list.append(max(df['tp_prob'][row2]))
             except ValueError:
-                empty_count += 1
-                diff.append(np.nan)
+                p_empty_count += 1
+                p_diff.append(np.nan)
+                p_prob_list.append(np.nan)
+            try:
+                s_diff.append(sdiff_lst[df['ts_prob'][row2].index(max(df['ts_prob'][row2]))])
+                s_prob_list.append(max(df['ts_prob'][row2]))
+            except ValueError:
+                s_empty_count += 1
+                s_diff.append(np.nan)
+                s_prob_list.append(np.nan)
         else:
-            print("Invalid diff_method.")
+            print("Invalid method: method = ('earliest', 'max_prob')")
 
-    df['residual'] = diffs
+    df['P_residual'] = p_diffs
+    df['S_residual'] = s_diffs
 
+    df = df.rename(columns={"p_time": "P_phasenet", "s_time": "S_phasenet"})
     df = df[sorted_headers].sort_values(['event_id', 'station'])
     df.to_pickle(os.path.join(dataset, "data_log_merged.pickle"))
     df.to_csv(os.path.join(dataset, "data_log_merged.csv"), index=False)
     print("Merge successful. Copying files to ", dataset)
-    return df, diff, empty_count
+    return df, p_diff, s_diff, p_prob_list, s_prob_list, p_empty_count, s_empty_count
 
 
 # npzReader for single npz file
@@ -317,11 +356,14 @@ df.to_csv(os.path.join(dataset_path, "data_log.csv"), index=False)
 print("data_log.csv written to ", dataset_path)
 
 csvWriter(npz_save_path, dataset_path)
-df2, residual, empty = csvSync(dataset_path, output_path, arrival_path, headers)
+df2, p_res, s_res, p_prob, s_prob, p_empty, s_empty = csvSync(dataset_path, output_path, arrival_path, headers, method)
 
-np.histogram(np.array(residual)[~np.isnan(residual)])
-res = np.nansum([i ** 2 for i in residual])
-print("SSR = ", res)
+#np.histogram(np.array(residual)[~np.isnan(residual)])
+pssr = np.nansum([i ** 2 for i in p_res])
+sssr = np.nansum([i ** 2 for i in s_res])
+print("P-SSR = ", pssr)
+print("S-SSR - ", sssr)
+
 # conda activate venv
 # cd /Users/Lenni/Documents/PycharmProjects/Kaikoura
 # python PhaseNet/run.py --mode=pred --model_dir=PhaseNet/model/190703-214543 --data_dir=Dataset/NPZ --tp_prob=0.3 --ts_prob=0.3 --data_list=Dataset/waveform.csv --output_dir=PhaseNet/output --plot_figure --save_result --batch_size=30 --input_length=27001
