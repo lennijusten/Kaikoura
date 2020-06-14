@@ -41,7 +41,6 @@ def csvSync(dataset, output, arrival, sorted_headers, method):
     log = pd.read_csv(os.path.join(dataset, 'data_log.csv'))
     picks = pd.read_csv(os.path.join(output, 'picks.csv'))
     arrivals = pd.read_pickle(arrival)
-    arrivals = arrivals.drop(columns=['error_x', 'method_x', 'error_y', 'method_y'], axis=1)
 
     print("\nMerging picks.csv with data_log.csv...")
     df = pd.merge(log, picks, how='left', on=['fname'])
@@ -89,8 +88,12 @@ def csvSync(dataset, output, arrival, sorted_headers, method):
     df['s_time'] = utc_s_picks
 
     print("Merging with arrival.pickle...")
-    df = pd.merge(df, arrivals, how='left', on=['event_id', 'station', 'network', 'channel'])
+    df = pd.merge(df, arrivals[["event_id", "station", "channel", "network", "P_time", "S_time"]],
+                  how='left', on=['event_id', 'station', 'network', 'channel'])
 
+    fname = []
+    p_picks = []
+    s_picks = []
     p_diffs = []
     p_diff = []
     s_diffs = []
@@ -99,7 +102,9 @@ def csvSync(dataset, output, arrival, sorted_headers, method):
     s_prob_list = []
     p_empty_count = 0
     s_empty_count = 0
+
     for row2 in range(len(df['p_time'])):
+        fname.append(df['fname'][row2])
         ptimes = df['p_time'][row2]
         stimes = df['s_time'][row2]
         pdiff_lst, sdiff_lst = [], []
@@ -118,49 +123,76 @@ def csvSync(dataset, output, arrival, sorted_headers, method):
         if method == 'earliest':
             try:
                 if df['itp'][row2][0] != 1:
+                    # p_picks.append(df['p_time'][row2][0])
                     p_diff.append(pdiff_lst[0])
                     p_prob_list.append(df['tp_prob'][row2][0])
+                    pick = 0
                 else:
+                    # p_picks.append(df['p_time'][row2][1])
                     p_diff.append(pdiff_lst[1])
                     p_prob_list.append(df['tp_prob'][row2][1])
+                    pick = 1
             except IndexError:
+                pick = 2
+                # p_picks.append([])
                 p_empty_count += 1
                 p_diff.append(np.nan)
                 p_prob_list.append(np.nan)
+
+            if pick == 2:
+                p_picks.append([])
+            else:
+                p_picks.append(df['p_time'][row2][pick])
+
             try:
                 if df['its'][row2][0] != 1:
                     s_diff.append(sdiff_lst[0])
                     s_prob_list.append(df['ts_prob'][row2][0])
+                    pick = 0
                 else:
                     s_diff.append(sdiff_lst[1])
                     s_prob_list.append(df['ts_prob'][row2][1])
+                    pick = 1
             except IndexError:
+                pick = 2
                 s_empty_count += 1
                 s_diff.append(np.nan)
                 s_prob_list.append(np.nan)
+
+            if pick == 2:
+                s_picks.append(np.nan)
+            else:
+                s_picks.append(df['s_time'][row2][pick])
+
         elif method == 'max_prob':
             try:
                 p_diff.append(pdiff_lst[df['tp_prob'][row2].index(max(df['tp_prob'][row2]))])
                 p_prob_list.append(max(df['tp_prob'][row2]))
+                p_picks.append(df['p_time'][row2][df['tp_prob'][row2].index(max(df['tp_prob'][row2]))])
             except ValueError:
                 p_empty_count += 1
                 p_diff.append(np.nan)
                 p_prob_list.append(np.nan)
+                p_picks.append(np.nan)
             except IndexError:
-                s_empty_count += 1
-                s_diff.append(np.nan)
-                s_prob_list.append(np.nan)
+                p_empty_count += 1
+                p_diff.append(np.nan)
+                p_prob_list.append(np.nan)
+                p_picks.append(np.nan)
             try:
                 s_diff.append(sdiff_lst[df['ts_prob'][row2].index(max(df['ts_prob'][row2]))])
                 s_prob_list.append(max(df['ts_prob'][row2]))
+                s_picks.append(df['s_time'][row2][df['ts_prob'][row2].index(max(df['ts_prob'][row2]))])
             except ValueError:
                 s_empty_count += 1
                 s_diff.append(np.nan)
                 s_prob_list.append(np.nan)
+                s_picks.append(np.nan)
             except IndexError:
                 s_empty_count += 1
                 s_diff.append(np.nan)
                 s_prob_list.append(np.nan)
+                s_picks.append(np.nan)
         else:
             print("Invalid method: method = (['earliest'], ['max_prob')]")
 
@@ -172,27 +204,40 @@ def csvSync(dataset, output, arrival, sorted_headers, method):
     df.to_pickle(os.path.join(dataset, "data_log_merged.pickle"))
     df.to_csv(os.path.join(dataset, "data_log_merged.csv"), index=False)
     print("Merge successful. Copying files to ", dataset)
-    return df, p_diff, s_diff, p_prob_list, s_prob_list, p_empty_count, s_empty_count
+
+    pick_dict = {
+        "P_phasenet": p_picks,
+        "S_phasenet": s_picks,
+        "P_res": p_diff,
+        "S_res": s_diff,
+        "P_prob": p_prob_list,
+        "S_prob": s_prob_list,
+        "pick_method": [method]*len(df),
+        "fname": fname
+    }
+
+    df_picks = pd.DataFrame(pick_dict, columns=['P_phasenet', 'P_res', 'P_prob',
+                                                'S_phasenet', 'S_res', 'S_prob', 'pick_method', 'fname'])
+
+    df_picks = pd.merge(df_picks, df[['P_time', 'S_time', 'fname']], how='left', on='fname')
+    df_picks = df_picks[["P_time", "P_phasenet", "P_res", "P_prob", "S_time", "S_phasenet", "S_res", "S_prob",
+                         "pick_method", "fname"]]
+
+    return df, df_picks, p_empty_count, s_empty_count
 
 
-df2, p_res, s_res, p_prob, s_prob, p_empty, s_empty = csvSync(dataset_path, output_path, arrival_path, headers,
-                                                              PN_pick_method[0])
+df2, df_pick, p_empty, s_empty = csvSync(dataset_path, output_path, arrival_path, headers, PN_pick_method[0])
 
-pssr = np.nansum([i ** 2 for i in p_res])
-sssr = np.nansum([i ** 2 for i in s_res])
+pssr = np.nansum([i ** 2 for i in df_pick['P_res']])
+sssr = np.nansum([i ** 2 for i in df_pick['S_res']])
 print("P-SSR = ", pssr)
 print("S-SSR - ", sssr)
 
 
-def outliers(p_residuals, s_residuals, p_probability, s_probability, method):
-    p_data = np.array(p_residuals)[~np.isnan(p_residuals)]
-    s_data = np.array(s_residuals)[~np.isnan(s_residuals)]
-    p_prob_data = np.array(p_probability)[~np.isnan(p_probability)]
-    s_prob_data = np.array(s_probability)[~np.isnan(s_probability)]
-
-    if method[0] == 'IQR:':
-        pq1, pq3 = np.percentile(p_data, [25, 75])
-        sq1, sq3 = np.percentile(s_data, [25, 75])
+def outliers(df_picks, method):
+    if method[0] == 'IQR':
+        pq1, pq3 = np.nanpercentile(np.array(df_picks['P_res']), [25, 75])
+        sq1, sq3 = np.nanpercentile(np.array(df_picks['S_res']), [25, 75])
 
         piqr = pq3 - pq1
         siqr = sq3 - sq1
@@ -214,78 +259,75 @@ def outliers(p_residuals, s_residuals, p_probability, s_probability, method):
     print("P Upper bound ({} method): {}".format(method[0], p_upper_bound))
     print("S Lower bound ({} method): {}".format(method[0], s_lower_bound))
 
-    p_inrange_idx = list(itertools.chain.from_iterable(np.array(
-        np.where(np.logical_and(p_data >= p_lower_bound, p_data <= p_upper_bound))).tolist()))
-    p_inrange = p_data[p_inrange_idx]
-    p_inrange_probs = p_prob_data[p_inrange_idx]
-    p_outliers_idx = list(itertools.chain.from_iterable(np.array(
-        np.where(np.logical_or(p_data < p_lower_bound, p_data > p_upper_bound))).tolist()))
-    p_outliers = p_data[p_outliers_idx]
-    p_outlier_probs = p_prob_data[p_outliers_idx]
-    print("{} P outliers found ({} in range)".format(len(p_outliers), len(p_inrange)))
+    df_picks['P_inrange'] = df_picks['P_res'].between(p_lower_bound, p_upper_bound, inclusive=True)
+    df_picks['S_inrange'] = df_picks['S_res'].between(s_lower_bound, s_upper_bound, inclusive=True)
 
-    s_inrange_idx = list(itertools.chain.from_iterable(np.array(
-        np.where(np.logical_and(s_data >= s_lower_bound, s_data <= s_upper_bound))).tolist()))
-    s_inrange = s_data[s_inrange_idx]
-    s_inrange_probs = s_prob_data[s_inrange_idx]
-    s_outliers_idx = list(itertools.chain.from_iterable(np.array(
-        np.where(np.logical_or(s_data < s_lower_bound, s_data > s_upper_bound))).tolist()))
-    s_outliers = s_data[s_outliers_idx]
-    s_outlier_probs = s_prob_data[s_outliers_idx]
-    print("{} S outliers found ({} in range)".format(len(s_outliers), len(s_inrange)))
+    m = [method] * len(df_picks)
+    df_picks['ol_method'] = m
 
-    return p_inrange, s_inrange, p_inrange_probs, s_inrange_probs, len(p_outliers), len(s_outliers)
+    df_picks = df_picks[["P_time", "P_phasenet", "P_res", "P_prob", "P_inrange",
+                         "S_time", "S_phasenet", "S_res", "S_prob", "S_inrange",
+                         "pick_method","ol_method", "fname"]]
+    return df_picks
 
 
-P, S, Pp, Sp, P_out, S_out = outliers(p_res, s_res, p_prob, s_prob, outlier_method)
+df_pick2 = outliers(df_pick, outlier_method)
 
 
-def Histogram(res, outliers, phase, Methods, method):
+def Histogram(df_picks, phase, Methods, method):
     fig, ax = plt.subplots()
     if phase == 'P':
         c = '#0504aa'
+        d = df_picks['P_res'][df_picks['P_inrange']]
     elif phase == 'S':
         c = '#ff7f0e'
+        d = df_picks['S_res'][df_picks['S_inrange']]
     else:
         print("Invalid phase entry: phase= ('P', 'S')")
 
+    n, bins, patches = plt.hist(x=d, bins='auto', color=c,
+                                alpha=0.7, rwidth=0.85)
+
     plt.xlim(-method[1], method[1])
 
-    n, bins, patches = plt.hist(x=res, bins='auto', color=c,
-                                alpha=0.7, rwidth=0.85)
     plt.grid(axis='y', alpha=0.75)
     plt.xlabel('Residual time (s)')
     plt.ylabel('Frequency*')
     plt.title('Histogram of {}-pick Residuals (expected-observed)'.format(phase))
     textstr = '\n'.join((
-        r'$n=%.0f$' % (len(res),),
-        r'$\mu=%.4f$' % (statistics.mean(res),),
-        r'$\mathrm{median}=%.4f$' % (round(statistics.median(res), 4),),
-        r'$\sigma=%.4f$' % (statistics.pstdev(res),)))
+        r'$n=%.0f$' % (len(d),),
+        r'$\mu=%.4f$' % (statistics.mean(d),),
+        r'$\mathrm{median}=%.4f$' % (round(statistics.median(d), 4),),
+        r'$\sigma=%.4f$' % (statistics.pstdev(d),)))
     ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=14,
             verticalalignment='top',
             bbox=dict(boxstyle='square,pad=.6', facecolor='lightgrey', edgecolor='black', alpha=1))
     plt.annotate('*method={}: {} '.format(method, Methods[method[0]]), (0, 0), (0, -40),
                  xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
-    plt.annotate('{} outliers removed'.format(outliers), (0, 0), (0, -50),
+    plt.annotate('{} outliers removed'.format(len(df_picks)-len(d)), (0, 0), (0, -50),
                  xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
     maxfreq = n.max()
     plt.ylim(ymax=np.ceil(maxfreq / 10) * 10 if maxfreq % 10 else maxfreq + 10)
     plt.show()
 
 
-Histogram(P, P_out, 'P', methods, outlier_method)
-Histogram(S, S_out, 'S', methods, outlier_method)
+Histogram(df_pick2, 'P', methods, outlier_method)
+Histogram(df_pick2, 'S', methods, outlier_method)
 
 
-def scatterPlot(P, S, P_prob, S_prob, P_out, S_out, Methods, method):
-    slope, intercept, r_value, p_value, std_err = stats.linregress(np.concatenate((abs(P), abs(S)), axis=None),
-                                                                   np.concatenate((P_prob, S_prob), axis=None))
-    line, = plt.plot(np.concatenate((abs(P), abs(S)), axis=None),
-                     intercept + slope * np.concatenate((abs(P), abs(S)), axis=None), "r--")
-    pscat = plt.scatter(abs(P), P_prob)
+def scatterPlot(df_picks, Methods, method):
+    p_res_np = abs(df_picks['P_res'][df_picks['P_inrange']])
+    s_res_np = abs(df_picks['S_res'][df_picks['S_inrange']])
+    p_prob_np = df_picks['P_prob'][df_picks['P_inrange']]
+    s_prob_np = df_picks['S_prob'][df_picks['S_inrange']]
+
+    slope, intercept, r_value, p_value, std_err = stats.linregress(np.concatenate((p_res_np, s_res_np), axis=0),
+                                                                   np.concatenate((p_prob_np, s_prob_np), axis=0))
+    line, = plt.plot(np.concatenate((p_res_np, s_res_np), axis=0),
+                     intercept + slope * np.concatenate((p_res_np, s_res_np), axis=0), "r--")
+    pscat = plt.scatter(p_res_np, p_prob_np)
     pscat.set_label('P')
-    sscat = plt.scatter(abs(S), S_prob)
+    sscat = plt.scatter(s_res_np, s_prob_np)
     sscat.set_label('S')
     plt.grid(axis='both', alpha=0.4)
     plt.xlim(0, method[1])
@@ -301,11 +343,11 @@ def scatterPlot(P, S, P_prob, S_prob, P_out, S_out, Methods, method):
                  bbox=dict(facecolor=fc, edgecolor=ec, boxstyle='square,pad=.6'))
     plt.annotate('*method={}: {} '.format(method, Methods[method[0]]), (0, 0), (0, -40),
                  xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
-    plt.annotate('{} outliers removed'.format(P_out + S_out), (0, 0), (0, -50),
+    plt.annotate('{} outliers removed'.format(len(df_picks)-len(p_res_np)), (0, 0), (0, -50),
                  xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
     plt.legend(loc=(.875, .70))
     print("y=%.6fx+(%.6f)" % (slope, intercept))
     plt.show()
 
 
-scatterPlot(P, S, Pp, Sp, P_out, S_out, methods, outlier_method)
+scatterPlot(df_pick2, methods, outlier_method)
