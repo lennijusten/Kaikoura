@@ -24,8 +24,8 @@ directorytosaveto = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events'  ##
 saveformat = 'SAC'  # also MSEED, these are common data formats. The machine learning code will tell you which format to use
 
 ### Earthquake parameters
-starttime = "2017-05-13 00:00:00.000"  # start date of catalog event search
-endtime = "2017-05-15 00:00:00"  # end date of catalog event search
+starttime = "2020-04-01 00:00:00"  # start date of catalog event search
+endtime = "2020-06-30 00:00:00"  # end date of catalog event search
 
 latitudeRange = [-37, -45]  # latitude range for events
 longitudeRange = [166, 180]  # longitude range for events
@@ -34,11 +34,11 @@ mindepth = [0]  # minimum depth of earthquake to search for
 maxdepth = [60]  # maximum depth of earthquake to search for
 
 minmagnitude = 3  # minimum magnitude of earthquake to search for
-maxmagnitude = 10  # maximum magnitude of earthquake to search for
+maxmagnitude = 6  # maximum magnitude of earthquake to search for
 
 ### station parameters
 station_network = 'NZ'  # station network (NZ = New Zealand, other networks have different two letter codes)
-chan = '*Z'  # channels are labeled ??[Z/N/E]. Z means vertical (N = North, E = East). Usually the stations we use are either just vertical or all 3 components
+chan = ['EH*', 'BH*']  # channels are labeled ??[Z/N/E]. Z means vertical (N = North, E = East). Usually the stations we use are either just vertical or all 3 components
 # by selecting just the vertical components we can get all the data we need (station name, location and elevation)
 
 
@@ -115,7 +115,7 @@ for iarr,_ in enumerate(Arrival['event_id']):
     otime = Events['event_origin_time'].values[ievt]  # grab origin time (in Event info)
 
     # things we need for grabbing data
-    chan = 'ZNE'  # channel information
+    # chan = 'ZNE'  # channel information
     location = '*'  # location information
     tbegin = otime - 30  # starttime is 30 seconds prior to origin of earthquake
     tend = otime + 240  # end time is 240 seconds after origin of earthquake
@@ -127,7 +127,7 @@ for iarr,_ in enumerate(Arrival['event_id']):
     print('Getting Arrival ' + str(iarr))
     for cha in chan:
         try:
-            st = client.get_waveforms(network, station, location, '*' + cha, tbegin, tend)
+            st = client.get_waveforms(network, station, location, cha, tbegin, tend)
             for tr in st:
                 filename = network + '_' + station + '_' + tr.stats.channel + '.' + saveformat
                 local_path = os.path.join(directorytosaveto, event_id, filename)
