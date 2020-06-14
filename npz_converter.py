@@ -23,7 +23,7 @@ import shlex
 # source can be a single event folder or a folder of event folders
 sac_source = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/'
 
-chan_list = ['EH?']  # add channels in three letter format. Script will look for all E,N,Z channels
+chan_list = ['EH?', 'BH?']  # add channels in three letter format. Script will look for all E,N,Z channels
 directions = ['N', 'E', 'Z']
 
 npz_save_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/NPZ'
@@ -63,10 +63,6 @@ def csvSync(dataset, output, arrival, sorted_headers, method):
     picks = pd.read_csv(os.path.join(output, 'picks.csv'))
     arrivals = pd.read_pickle(arrival)
     arrivals = arrivals.drop(columns=['error_x', 'method_x', 'error_y', 'method_y'], axis=1)
-    # arrivals['channel_y'] = arrivals['channel_y'].replace(np.nan, ' ', regex=True)
-
-    # arrivals['channel'] = [x.replace(x[len(x) - 1], '?') for x in arrivals['channel']]
-
 
     print("\nMerging picks.csv with data_log.csv...")
     df = pd.merge(log, picks, how='left', on=['fname'])
@@ -76,18 +72,26 @@ def csvSync(dataset, output, arrival, sorted_headers, method):
         df[col] = [obspy.UTCDateTime(x) for x in df[col]]
 
     for col2 in ['itp', 'its']:
-        try:
-            df[col2] = [list(map(int, shlex.split(x.strip('[]')))) for x in df[col2]]
-        except AttributeError:
-            print("Pick sample data is already in the correct format. Passing")
-            pass
+        a = []
+        for x in range(len(df[col2])):
+            try:
+                a.append(list(map(int, shlex.split(df[col2][x].strip('[]')))))
+            except AttributeError:
+                a.append([])
+                # print("Pick sample data is already in the correct format. Passing")
+                pass
+        df[col2] = a
 
     for col3 in ['tp_prob', 'ts_prob']:
-        try:
-            df[col3] = [list(map(float, shlex.split(x.strip('[]')))) for x in df[col3]]
-        except AttributeError:
-            print("Pick probability data is already in the correct format. Passing")
-            pass
+        b = []
+        for x in range(len(df[col3])):
+            try:
+                b.append(list(map(float, shlex.split(df[col3][x].strip('[]')))))
+            except AttributeError:
+                b.append([])
+                # print("Pick probability data is already in the correct format. Passing")
+                pass
+        df[col3] = b
 
     utc_p_picks = []
     utc_s_picks = []
@@ -122,27 +126,35 @@ def csvSync(dataset, output, arrival, sorted_headers, method):
         pdiff_lst, sdiff_lst = [], []
         for pt in ptimes:
             try:
-                pdiff_lst.append(df['P_time'][row2]-pt)
+                pdiff_lst.append(df['P_time'][row2] - pt)
             except TypeError:
                 pass
         p_diffs.append(pdiff_lst)
-        for st_ in stimes:
+        for st in stimes:
             try:
-                sdiff_lst.append(df['S_time'][row2]-st_)
+                sdiff_lst.append(df['S_time'][row2] - st)
             except TypeError:
                 pass
         s_diffs.append(sdiff_lst)
         if method == 'earliest':
             try:
-                p_diff.append(pdiff_lst[0])
-                p_prob_list.append(df['tp_prob'][row2][0])
+                if df['itp'][row2][0] != 1:
+                    p_diff.append(pdiff_lst[0])
+                    p_prob_list.append(df['tp_prob'][row2][0])
+                else:
+                    p_diff.append(pdiff_lst[1])
+                    p_prob_list.append(df['tp_prob'][row2][1])
             except IndexError:
                 p_empty_count += 1
                 p_diff.append(np.nan)
                 p_prob_list.append(np.nan)
             try:
-                s_diff.append(sdiff_lst[0])
-                s_prob_list.append(df['ts_prob'][row2][0])
+                if df['its'][row2][0] != 1:
+                    s_diff.append(sdiff_lst[0])
+                    s_prob_list.append(df['ts_prob'][row2][0])
+                else:
+                    s_diff.append(sdiff_lst[1])
+                    s_prob_list.append(df['ts_prob'][row2][1])
             except IndexError:
                 s_empty_count += 1
                 s_diff.append(np.nan)
@@ -155,6 +167,10 @@ def csvSync(dataset, output, arrival, sorted_headers, method):
                 p_empty_count += 1
                 p_diff.append(np.nan)
                 p_prob_list.append(np.nan)
+            except IndexError:
+                s_empty_count += 1
+                s_diff.append(np.nan)
+                s_prob_list.append(np.nan)
             try:
                 s_diff.append(sdiff_lst[df['ts_prob'][row2].index(max(df['ts_prob'][row2]))])
                 s_prob_list.append(max(df['ts_prob'][row2]))
@@ -162,8 +178,12 @@ def csvSync(dataset, output, arrival, sorted_headers, method):
                 s_empty_count += 1
                 s_diff.append(np.nan)
                 s_prob_list.append(np.nan)
+            except IndexError:
+                s_empty_count += 1
+                s_diff.append(np.nan)
+                s_prob_list.append(np.nan)
         else:
-            print("Invalid method: method = ('earliest', 'max_prob')")
+            print("Invalid method: method = (['earliest'], ['max_prob')]")
 
     df['P_residual'] = p_diffs
     df['S_residual'] = s_diffs
@@ -356,13 +376,13 @@ df.to_csv(os.path.join(dataset_path, "data_log.csv"), index=False)
 print("data_log.csv written to ", dataset_path)
 
 csvWriter(npz_save_path, dataset_path)
-df2, p_res, s_res, p_prob, s_prob, p_empty, s_empty = csvSync(dataset_path, output_path, arrival_path, headers, method)
+#df2, p_res, s_res, p_prob, s_prob, p_empty, s_empty = csvSync(dataset_path, output_path, arrival_path, headers, method)
 
-#np.histogram(np.array(residual)[~np.isnan(residual)])
-pssr = np.nansum([i ** 2 for i in p_res])
-sssr = np.nansum([i ** 2 for i in s_res])
-print("P-SSR = ", pssr)
-print("S-SSR - ", sssr)
+
+# pssr = np.nansum([i ** 2 for i in p_res])
+# sssr = np.nansum([i ** 2 for i in s_res])
+# print("P-SSR = ", pssr)
+# print("S-SSR - ", sssr)
 
 # conda activate venv
 # cd /Users/Lenni/Documents/PycharmProjects/Kaikoura
