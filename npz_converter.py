@@ -256,9 +256,17 @@ row_list = []
 samples = []
 for event in events:
     if single:
-        st = obspy.read(os.path.join(sac_source, '*.SAC'))
+        try:
+            st = obspy.read(os.path.join(sac_source, '*.SAC'))
+        except Exception:
+            print("Event {} folder is empty. Skipping...".format(event))
+            pass
     else:
-        st = obspy.read(os.path.join(sac_source, event, '*.SAC'))
+        try:
+            st = obspy.read(os.path.join(sac_source, event, '*.SAC'))
+        except Exception:
+            print("Event {} folder is empty. Skipping...".format(event))
+            pass
     trace_count += len(st)
 
     print("\n\nFetching traces from event {}...".format(event))
