@@ -19,6 +19,7 @@ PN_pick_method = ['earliest']
 outlier_method = ['over', 2]
 
 dataset_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset'
+outlier_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/Outliers'
 output_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/PhaseNet/output'
 arrival_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/Arrival.pickle'
 
@@ -219,8 +220,8 @@ def csvSync(dataset, output, arrival, sorted_headers, method):
     df_picks = pd.DataFrame(pick_dict, columns=['P_phasenet', 'P_res', 'P_prob',
                                                 'S_phasenet', 'S_res', 'S_prob', 'pick_method', 'fname'])
 
-    df_picks = pd.merge(df_picks, df[['P_time', 'S_time', 'fname']], how='left', on='fname')
-    df_picks = df_picks[["P_time", "P_phasenet", "P_res", "P_prob", "S_time", "S_phasenet", "S_res", "S_prob",
+    df_picks = pd.merge(df_picks, df[['event_id', 'P_time', 'S_time', 'fname']], how='left', on='fname')
+    df_picks = df_picks[["event_id", "P_time", "P_phasenet", "P_res", "P_prob", "S_time", "S_phasenet", "S_res", "S_prob",
                          "pick_method", "fname"]]
 
     return df, df_picks, p_empty_count, s_empty_count
@@ -234,7 +235,7 @@ print("P-SSR = ", pssr)
 print("S-SSR - ", sssr)
 
 
-def outliers(df_picks, method):
+def outliers(df_picks, method, savepath):
     if method[0] == 'IQR':
         pq1, pq3 = np.nanpercentile(np.array(df_picks['P_res']), [25, 75])
         sq1, sq3 = np.nanpercentile(np.array(df_picks['S_res']), [25, 75])
@@ -265,13 +266,30 @@ def outliers(df_picks, method):
     m = [method] * len(df_picks)
     df_picks['ol_method'] = m
 
-    df_picks = df_picks[["P_time", "P_phasenet", "P_res", "P_prob", "P_inrange",
+    p_outliers = df_picks.loc[(df_picks['P_res'].notna()) & (df_picks['P_inrange'] == False)]
+    p_outliers = p_outliers.drop(columns=["S_time", "S_phasenet", "S_res", "S_prob", "S_inrange"])
+    p_outliers = p_outliers[["event_id", "P_time", "P_phasenet", "P_res", "P_prob", "P_inrange",
+                             "pick_method", "ol_method", "fname"]]
+    p_outliers.to_pickle(os.path.join(savepath, "p_outliers.pickle"))
+    p_outliers.to_csv(os.path.join(savepath, "p_outliers.csv"), index=False)
+
+    s_outliers = df_picks.loc[(df_picks['S_res'].notna()) & (df_picks['S_inrange'] == False)]
+    s_outliers = s_outliers.drop(columns=["P_time", "P_phasenet", "P_res", "P_prob", "P_inrange"])
+    s_outliers = s_outliers[["event_id", "S_time", "S_phasenet", "S_res", "S_prob", "S_inrange",
+                             "pick_method", "ol_method", "fname"]]
+    s_outliers.to_pickle(os.path.join(savepath, "s_outliers.pickle"))
+    s_outliers.to_csv(os.path.join(savepath, "s_outliers.csv"), index=False)
+
+    df_picks = df_picks[["event_id", "P_time", "P_phasenet", "P_res", "P_prob", "P_inrange",
                          "S_time", "S_phasenet", "S_res", "S_prob", "S_inrange",
-                         "pick_method","ol_method", "fname"]]
-    return df_picks
+                         "pick_method", "ol_method", "fname"]]
+
+    df_picks.to_pickle(os.path.join(savepath, "filter_picks.pickle"))
+    df_picks.to_csv(os.path.join(savepath, "filter_picks.csv"), index=False)
+    return df_picks, p_outliers, s_outliers
 
 
-df_pick2 = outliers(df_pick, outlier_method)
+df_pick2, p_out, s_out = outliers(df_pick, outlier_method, outlier_path)
 
 
 def Histogram(df_picks, phase, Methods, method):
@@ -304,7 +322,7 @@ def Histogram(df_picks, phase, Methods, method):
             bbox=dict(boxstyle='square,pad=.6', facecolor='lightgrey', edgecolor='black', alpha=1))
     plt.annotate('*method={}: {} '.format(method, Methods[method[0]]), (0, 0), (0, -40),
                  xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
-    plt.annotate('{} outliers removed'.format(len(df_picks)-len(d)), (0, 0), (0, -50),
+    plt.annotate('{} arrivals removed'.format(len(df_picks)-len(d)), (0, 0), (0, -50),
                  xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
     maxfreq = n.max()
     plt.ylim(ymax=np.ceil(maxfreq / 10) * 10 if maxfreq % 10 else maxfreq + 10)
@@ -343,7 +361,7 @@ def scatterPlot(df_picks, Methods, method):
                  bbox=dict(facecolor=fc, edgecolor=ec, boxstyle='square,pad=.6'))
     plt.annotate('*method={}: {} '.format(method, Methods[method[0]]), (0, 0), (0, -40),
                  xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
-    plt.annotate('{} outliers removed'.format(len(df_picks)-len(p_res_np)), (0, 0), (0, -50),
+    plt.annotate('{} arrivals removed'.format(len(df_picks)-len(p_res_np)), (0, 0), (0, -50),
                  xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
     plt.legend(loc=(.875, .70))
     print("y=%.6fx+(%.6f)" % (slope, intercept))
