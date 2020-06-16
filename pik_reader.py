@@ -369,3 +369,6 @@ def scatterPlot(df_picks, Methods, method):
 
 
 scatterPlot(df_pick2, methods, outlier_method)
+
+print("{} P outliers excluded".format(len(p_out)))
+print("{} S outliers excluded".format(len(s_out)))
