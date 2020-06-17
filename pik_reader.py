@@ -11,6 +11,7 @@ import pandas as pd
 import shlex
 import matplotlib.pyplot as plt
 from matplotlib import colors
+from matplotlib import gridspec
 import itertools
 import statistics
 from scipy import stats
@@ -22,6 +23,7 @@ dataset_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset'
 outlier_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/Outliers'
 output_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/PhaseNet/output'
 arrival_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/Arrival.pickle'
+plot_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/Plots'
 
 headers = ['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end', 'P_residual', 'P_time',
            'P_phasenet', 'tp_prob', 'itp', 'S_residual', 'S_time', 'S_phasenet', 'ts_prob', 'its', 'fname']
@@ -513,16 +515,19 @@ def outliers(df_picks, method, savepath):
 df_picks, p_out, s_out = outliers(df_picks, outlier_method, outlier_path)
 print("=================================================================================")
 
-def Histogram(df_picks, phase, p_out, s_out, Methods, method):
+
+def Histogram(df_picks, phase, p_out, s_out, plot_path, Methods, method):
     fig, ax = plt.subplots()
     if phase == 'P':
-        c = '#0504aa'
+        c = '#1f77b4'
         d = df_picks['P_res'][df_picks['P_inrange']]
         ol = len(p_out)
+        path = os.path.join(plot_path, 'p_hist.png')
     elif phase == 'S':
         c = '#ff7f0e'
         d = df_picks['S_res'][df_picks['S_inrange']]
         ol = len(s_out)
+        path = os.path.join(plot_path, 's_hist.png')
     else:
         print("Invalid phase entry: phase= ('P', 'S')")
 
@@ -549,50 +554,89 @@ def Histogram(df_picks, phase, p_out, s_out, Methods, method):
                  xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
     maxfreq = n.max()
     plt.ylim(ymax=np.ceil(maxfreq / 10) * 10 if maxfreq % 10 else maxfreq + 10)
+    plt.savefig(path)
     plt.show()
 
 
-Histogram(df_picks, 'P', p_out, s_out, methods, outlier_method)
-Histogram(df_picks, 'S', p_out, s_out, methods, outlier_method)
+Histogram(df_picks, 'P', p_out, s_out, plot_path, methods, outlier_method)
+Histogram(df_picks, 'S', p_out, s_out, plot_path, methods, outlier_method)
 
 
-def scatterPlot(df_picks, p_out, s_out, Methods, method):
+# %%
+def scatterPlot(df_picks, plot_path, method):
     p_res_np = abs(df_picks['P_res'][df_picks['P_inrange']])
     s_res_np = abs(df_picks['S_res'][df_picks['S_inrange']])
     p_prob_np = df_picks['P_prob'][df_picks['P_inrange']]
     s_prob_np = df_picks['S_prob'][df_picks['S_inrange']]
 
-    slope, intercept, r_value, p_value, std_err = stats.linregress(np.concatenate((p_res_np, s_res_np), axis=0),
-                                                                   np.concatenate((p_prob_np, s_prob_np), axis=0))
-    line, = plt.plot(np.concatenate((p_res_np, s_res_np), axis=0),
-                     intercept + slope * np.concatenate((p_res_np, s_res_np), axis=0), "r--")
-    pscat = plt.scatter(p_res_np, p_prob_np)
+    px = np.linspace(0, method[1], len(p_res_np))
+    sx = np.linspace(0, method[1], len(s_res_np))
+    p_slope, p_intercept, pr_value, pp_value, p_std_err = stats.linregress(p_res_np, p_prob_np)
+    s_slope, s_intercept, sr_value, sp_value, s_std_err = stats.linregress(s_res_np, s_prob_np)
+
+    plt.close()
+    fig = plt.figure(constrained_layout=False)
+    fig.suptitle('Scatterplot of P & S Residuals by PhaseNet Probability')
+
+    gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.3, left=0.1, right=0.95)
+    gs2 = fig.add_gridspec(ncols=1, nrows=2, top=0.25, bottom=0.05, left=0.1, right=0.95, hspace=0.02)
+
+    ax1 = plt.subplot(gs1[0], xlim=(0, method[1]))
+    ax1.grid(axis='both', alpha=0.4)
+    ax1.set(ylabel='PhaseNet probability*')
+    pl, = ax1.plot(px, p_intercept + p_slope * px, color='#333333', linestyle='dashdot',lw = 2.4,
+                   label="y=%.2fx+%.2f" % (p_slope, p_intercept))
+    sl, = ax1.plot(sx, s_intercept + s_slope * sx, color='#333333', linestyle='dotted',lw=2.65,
+                   label="y=%.2fx+%.2f" % (s_slope, s_intercept))
+    pscat = ax1.scatter(p_res_np, p_prob_np)
     pscat.set_label('P')
-    sscat = plt.scatter(s_res_np, s_prob_np)
+    sscat = ax1.scatter(s_res_np, s_prob_np)
     sscat.set_label('S')
-    plt.grid(axis='both', alpha=0.4)
-    plt.xlim(0, method[1])
-    plt.xlabel('abs(Residual time) (s)')
-    plt.ylabel('PhaseNet probability*')
-    plt.title('Scatterplot of P & S Residuals by PhaseNet Probability, $r^2={}$'.format(round(r_value ** 2, 3)))
+    leg = ax1.legend([pscat, pl, sscat, sl],
+                     ['P', "y=%.2fx+%.2f" % (p_slope, p_intercept), 'S', "y=%.2fx+%.2f" % (s_slope, s_intercept)])
+    leg.get_frame().set_edgecolor('#262626')
 
-    fc = colors.to_rgba('lightgrey')
-    ec = colors.to_rgba('black')
-    fc = fc[:-1] + (0.7,)
-    plt.annotate("y=%.3fx+%.3f" % (slope, intercept), xy=(.715, .99), xytext=(12, -12), va='top',
-                 xycoords='axes fraction', textcoords='offset points',
-                 bbox=dict(facecolor=fc, edgecolor=ec, boxstyle='square,pad=.6'))
-    plt.annotate('*method={}: {} '.format(method, Methods[method[0]]), (0, 0), (0, -40),
-                 xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
-    plt.annotate('{} total arrivals removed, {} outliers removed'
-                 .format(2 * len(df_picks) - len(p_res_np) - len(s_res_np), len(p_out) + len(s_out)), (0, 0), (0, -50),
-                 xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
-    plt.legend(loc=(.875, .70))
-    print("y=%.6fx+(%.6f)" % (slope, intercept))
+    ax2 = plt.subplot(gs2[0], frame_on=False, xlim=(0, method[1]))
+    ax2.tick_params(axis=u'both', which=u'both', length=0)
+    plt.setp(ax2.get_xticklabels(), visible=False)
+    plt.setp(ax2.get_yticklabels(), visible=False)
+    ax2.boxplot(p_res_np, vert=False, whis=(0, 100), patch_artist=True,
+                boxprops=dict(facecolor='#1f77b4', color='k'),
+                medianprops=dict(color='k'),
+                )
+
+    ax3 = plt.subplot(gs2[1], frame_on=False, xlim=(0, method[1]), xlabel='abs(Residual time) (s)')
+    ax3.tick_params(axis=u'both', which=u'both', length=0)
+    plt.setp(ax3.get_xticklabels(), visible=False)
+    plt.setp(ax3.get_yticklabels(), visible=False)
+    ax3.boxplot(s_res_np, vert=False, whis=(0, 100), patch_artist=True,
+                boxprops=dict(facecolor='#ff7f0e', color='k'),
+                medianprops=dict(color='k'),
+                )
+
+    # fc = colors.to_rgba('lightgrey')
+    # ec = colors.to_rgba('black')
+    # fc = fc[:-1] + (0.7,)
+    # plt.annotate("y=%.3fx+%.3f" % (p_slope, p_intercept), xy=(.715, .99), xytext=(12, -12), va='top',
+    #              xycoords='axes fraction', textcoords='offset points',
+    #              bbox=dict(facecolor=fc, edgecolor=ec, boxstyle='square,pad=.6'))
+
+    # plt.annotate('*method={}: {} '.format(method, Methods[method[0]]), (0, 0), (0, -40),
+    #              xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
+    # plt.annotate('{} total arrivals removed, {} outliers removed'
+    #              .format(2 * len(df_picks) - len(p_res_np) - len(s_res_np), len(p_out) + len(s_out)), (0, 0), (0, -50),
+    #              xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
+
+    plt.savefig(os.path.join(plot_path, 'scatter.png'))
+
+    print("P:   y=%.6fx+(%.6f)" % (p_slope, p_intercept))
+    print("S:   y=%.6fx+(%.6f)" % (s_slope, s_intercept))
     plt.show()
+    plt.close()
 
 
-scatterPlot(df_picks, p_out, s_out, methods, outlier_method)
+scatterPlot(df_picks, plot_path, outlier_method)
+# %%
 
 print("{} P outliers excluded".format(len(p_out)))
 print("{} S outliers excluded".format(len(s_out)))
