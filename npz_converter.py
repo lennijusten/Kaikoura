@@ -26,6 +26,11 @@ sac_source = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/'
 chan_list = ['EH?', 'BH?']  # add channels in three letter format. Script will look for all E,N,Z channels
 directions = ['N', 'E', 'Z']
 
+tbegin =-30  # starttime is 30 seconds prior to origin of earthquake
+tend = 240  # end time is 240 seconds after origin of earthquake
+dt = 0.01
+n_samp = int((tend-tbegin)/dt+1)
+
 npz_save_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/NPZ'
 dataset_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset'
 output_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/PhaseNet/output'
@@ -56,7 +61,6 @@ def csvWriter(source, destination):
         print("waveform.csv written to {}".format(destination))
     except:
         print("Error writing waveform.csv. Check that directory exists.")
-
 
 def csvSync(dataset, output, arrival, sorted_headers, method):
     log = pd.read_csv(os.path.join(dataset, 'data_log.csv'))
@@ -299,7 +303,7 @@ for event in events:
                 delta = [st[0].stats.delta, st[1].stats.delta, st[2].stats.delta]
 
                 if (st_filtered_channel[0].data.size, st_filtered_channel[1].data.size) == (
-                        st_filtered_channel[1].data.size, st_filtered_channel[2].data.size):
+                        st_filtered_channel[1].data.size, st_filtered_channel[2].data.size) and st_filtered_channel[0].data.size == n_samp:
                     samp_len = True
                 else:
                     samp_len = False
@@ -394,4 +398,6 @@ csvWriter(npz_save_path, dataset_path)
 
 # conda activate venv
 # cd /Users/Lenni/Documents/PycharmProjects/Kaikoura
-# python PhaseNet/run.py --mode=pred --model_dir=PhaseNet/model/190703-214543 --data_dir=Dataset/NPZ --tp_prob=0.3 --ts_prob=0.3 --data_list=Dataset/waveform.csv --output_dir=PhaseNet/output --plot_figure --save_result --batch_size=30 --input_length=27001
+# python PhaseNet/run.py --mode=pred --model_dir=PhaseNet/model/190703-214543 --data_dir=Dataset/NPZ --tp_prob=0.05 --ts_prob=0.05 --data_list=Dataset/waveform.csv --output_dir=PhaseNet/output --plot_figure --save_result --batch_size=30 --input_length=27001
+
+# python PhaseNet/run.py --mode=pred --model_dir=PhaseNet/model/190703-214543 --data_dir=Dataset/NPZ --tp_prob=0.05 --ts_prob=0.05 --data_list=Dataset/waveform.csv --output_dir=PhaseNet/output --batch_size=50 --input_length=27001
