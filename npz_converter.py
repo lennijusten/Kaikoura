@@ -26,10 +26,10 @@ sac_source = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/'
 chan_list = ['EH?', 'BH?']  # add channels in three letter format. Script will look for all E,N,Z channels
 directions = ['N', 'E', 'Z']
 
-tbegin =-30  # starttime is 30 seconds prior to origin of earthquake
+tbegin = -30  # starttime is 30 seconds prior to origin of earthquake
 tend = 240  # end time is 240 seconds after origin of earthquake
 dt = 0.01
-n_samp = int((tend-tbegin)/dt+1)
+n_samp = int((tend - tbegin) / dt + 1)
 
 npz_save_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/NPZ'
 dataset_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset'
@@ -37,7 +37,7 @@ output_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/PhaseNet/output'
 arrival_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/Arrival.pickle'
 
 headers = ['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end', 'P_residual', 'P_time',
-           'P_phasenet', 'tp_prob', 'itp', 'S_residual','S_time', 'S_phasenet', 'ts_prob', 'its', 'fname']
+           'P_phasenet', 'tp_prob', 'itp', 'S_residual', 'S_time', 'S_phasenet', 'ts_prob', 'its', 'fname']
 
 # METHODS:
 # earliest -- Uses PhaseNet's earliest pick as the arrival pick
@@ -61,6 +61,7 @@ def csvWriter(source, destination):
         print("waveform.csv written to {}".format(destination))
     except:
         print("Error writing waveform.csv. Check that directory exists.")
+
 
 def csvSync(dataset, output, arrival, sorted_headers, method):
     log = pd.read_csv(os.path.join(dataset, 'data_log.csv'))
@@ -256,110 +257,119 @@ def stationChannels(stream):
     pass
 
 
+run = 0
 row_list = []
 samples = []
 for event in events:
     if single:
         try:
+            run = 1
             st = obspy.read(os.path.join(sac_source, '*.SAC'))
         except Exception:
+            run = 0
             print("Event {} folder is empty. Skipping...".format(event))
             pass
     else:
         try:
             st = obspy.read(os.path.join(sac_source, event, '*.SAC'))
+            run = 1
         except Exception:
+            run = 0
             print("Event {} folder is empty. Skipping...".format(event))
             pass
-    trace_count += len(st)
 
-    print("\n\nFetching traces from event {}...".format(event))
-    print("Found {} traces. Reading... \n\n".format(len(st)))
+    if run == 1:
+        trace_count += len(st)
 
-    station = []
-    for tr in st:
-        station.append(tr.stats.station)
-    unique_station = list(set(station))
-    print("Number of unique stations: ", len(unique_station))
+        print("\n\nFetching traces from event {}...".format(event))
+        print("Found {} traces. Reading... \n\n".format(len(st)))
 
-    for sta in unique_station:
-        set_count = 0
-        st_filtered_station = st.select(station=sta)
-        print("-------------------------------------------------------")
-        print("-------------------------------------------------------")
-        print("Station name: ", sta)
-        print("Number of traces in station: ", len(st_filtered_station))
+        station = []
+        for tr in st:
+            station.append(tr.stats.station)
+        unique_station = list(set(station))
+        print("Number of unique stations: ", len(unique_station))
 
-        stationChannels(st_filtered_station)
+        for sta in unique_station:
+            set_count = 0
+            st_filtered_station = st.select(station=sta)
+            print("-------------------------------------------------------")
+            print("-------------------------------------------------------")
+            print("Station name: ", sta)
+            print("Number of traces in station: ", len(st_filtered_station))
 
-        for cha in chan_list:
-            st_filtered_channel = st_filtered_station.select(channel=cha)
+            stationChannels(st_filtered_station)
 
-            if len(st_filtered_channel) == 3:
-                net = st_filtered_channel[0].stats.network
-                start = [st_filtered_channel[0].stats.starttime, st_filtered_channel[1].stats.starttime,
-                         st_filtered_channel[2].stats.starttime]
-                start_dif = [abs(start[0] - start[1]), abs(start[1] - start[2]), abs(start[0] - start[2])]
-                delta = [st[0].stats.delta, st[1].stats.delta, st[2].stats.delta]
+            for cha in chan_list:
+                st_filtered_channel = st_filtered_station.select(channel=cha)
 
-                if (st_filtered_channel[0].data.size, st_filtered_channel[1].data.size) == (
-                        st_filtered_channel[1].data.size, st_filtered_channel[2].data.size) and st_filtered_channel[0].data.size == n_samp:
-                    samp_len = True
-                else:
-                    samp_len = False
+                if len(st_filtered_channel) == 3:
+                    net = st_filtered_channel[0].stats.network
+                    start = [st_filtered_channel[0].stats.starttime, st_filtered_channel[1].stats.starttime,
+                             st_filtered_channel[2].stats.starttime]
+                    start_dif = [abs(start[0] - start[1]), abs(start[1] - start[2]), abs(start[0] - start[2])]
+                    delta = [st[0].stats.delta, st[1].stats.delta, st[2].stats.delta]
 
-                if max(start_dif) < max(delta):
-                    if samp_len:
-                        set_count += 1
-                        rows = st_filtered_channel[0].data.size
-                        data_log = np.empty((rows, 0), dtype='float32')
-                        for tr2 in st_filtered_channel:
-                            trace_data = np.reshape(tr2.data, (-1, 1))
-                            data_log = np.append(data_log, trace_data, 1)
+                    if (st_filtered_channel[0].data.size, st_filtered_channel[1].data.size) == (
+                            st_filtered_channel[1].data.size, st_filtered_channel[2].data.size) and st_filtered_channel[
+                        0].data.size == n_samp:
+                        samp_len = True
+                    else:
+                        samp_len = False
 
-                        samples.append(np.size(data_log, 0))
-                        # filename format: network_station_channel(?)_samples.npz
-                        stream_name = net + '_' + sta + '_' + cha[:-1] + '_' + event + '_' + str(
-                            np.size(data_log, 0)) + '.npz'
-                        np.savez(os.path.join(npz_save_path, stream_name), data=data_log)
-                        row_list.append(
-                            [net, event, sta, cha, np.size(data_log, 0), tr2.stats.delta, tr2.stats.starttime,
-                             tr2.stats.endtime, stream_name])
+                    if max(start_dif) < max(delta):
+                        if samp_len:
+                            set_count += 1
+                            rows = st_filtered_channel[0].data.size
+                            data_log = np.empty((rows, 0), dtype='float32')
+                            for tr2 in st_filtered_channel:
+                                trace_data = np.reshape(tr2.data, (-1, 1))
+                                data_log = np.append(data_log, trace_data, 1)
 
-                        print("Full set of E,N,Z found for channel [{}]. Writing to ".format(cha))
-                        print(os.path.join(npz_save_path, stream_name))
-                    elif not samp_len:
-                        print("Start-times in channel [{}] matched but did not contain same number of samples. "
-                              "Skipping...".format(cha))
+                            samples.append(np.size(data_log, 0))
+                            # filename format: network_station_channel(?)_samples.npz
+                            stream_name = net + '_' + sta + '_' + cha[:-1] + '_' + event + '_' + str(
+                                np.size(data_log, 0)) + '.npz'
+                            np.savez(os.path.join(npz_save_path, stream_name), data=data_log)
+                            row_list.append(
+                                [net, event, sta, cha, np.size(data_log, 0), tr2.stats.delta, tr2.stats.starttime,
+                                 tr2.stats.endtime, stream_name])
+
+                            print("Full set of E,N,Z found for channel [{}]. Writing to ".format(cha))
+                            print(os.path.join(npz_save_path, stream_name))
+                        elif not samp_len:
+                            print("Start-times in channel [{}] matched but did not contain same number of samples. "
+                                  "Skipping...".format(cha))
+                            print(st_filtered_channel)
+                            len_count += 1
+                            len_sta.append(event + ': ' + sta)
+                        else:
+                            print("Unknown error matching E,N,Z lengths for channel {}. Skipping...".format(cha))
+                            print(st_filtered_channel)
+                            len_count += 1
+                            len_sta.append(event + ': ' + sta)
+                    elif max(start_dif) >= max(delta):
+                        print("Start-times in channel [{}] don't match. Skipping...".format(cha))
                         print(st_filtered_channel)
                         len_count += 1
                         len_sta.append(event + ': ' + sta)
                     else:
-                        print("Unknown error matching E,N,Z lengths for channel {}. Skipping...".format(cha))
-                        print(st_filtered_channel)
-                        len_count += 1
-                        len_sta.append(event + ': ' + sta)
-                elif max(start_dif) >= max(delta):
-                    print("Start-times in channel [{}] don't match. Skipping...".format(cha))
-                    print(st_filtered_channel)
-                    len_count += 1
-                    len_sta.append(event + ': ' + sta)
+                        print("Unknown false condition in channel [{}]. Skipping...".format(cha))
+                elif 0 <= len(st_filtered_channel) < 3:
+                    print(
+                        "Channel [{}] in station {} did not contain a full set of E,N,Z. Skipping...".format(cha, sta))
+                    incomplete_count += 1
+                elif len(st_filtered_channel) > 3:
+                    print("More than three traces in channel [{}]. Check for duplicates. Skipping...".format(cha))
+                    print(st_filtered_channel.__str__(extended=True))
+                    overfull_count += 1
+                    overfull_sta.append(event + ': ' + sta)
                 else:
-                    print("Unknown false condition in channel [{}]. Skipping...".format(cha))
-            elif 0 <= len(st_filtered_channel) < 3:
-                print("Channel [{}] in station {} did not contain a full set of E,N,Z. Skipping...".format(cha, sta))
-                incomplete_count += 1
-            elif len(st_filtered_channel) > 3:
-                print("More than three traces in channel [{}]. Check for duplicates. Skipping...".format(cha))
-                print(st_filtered_channel.__str__(extended=True))
-                overfull_count += 1
-                overfull_sta.append(event + ': ' + sta)
-            else:
-                print("Unknown error finding number of channels in {}. Skipping...".format(cha))
+                    print("Unknown error finding number of channels in {}. Skipping...".format(cha))
 
-        total += set_count
-        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-        print("Total number of files written for station: ", set_count)
+            total += set_count
+            print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+            print("Total number of files written for station: ", set_count)
 
 df = pd.DataFrame(row_list, columns=['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end',
                                      'fname'])
@@ -388,7 +398,7 @@ df.to_csv(os.path.join(dataset_path, "data_log.csv"), index=False)
 print("data_log.csv written to ", dataset_path)
 
 csvWriter(npz_save_path, dataset_path)
-#df2, p_res, s_res, p_prob, s_prob, p_empty, s_empty = csvSync(dataset_path, output_path, arrival_path, headers, method)
+# df2, p_res, s_res, p_prob, s_prob, p_empty, s_empty = csvSync(dataset_path, output_path, arrival_path, headers, method)
 
 
 # pssr = np.nansum([i ** 2 for i in p_res])
