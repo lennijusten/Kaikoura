@@ -18,6 +18,15 @@ from scipy import stats
 
 PN_pick_method = ['max_prob']
 outlier_method = ['over', 2]
+vps_method = ['range', 0, 500]
+
+tbegin = -30  # starttime is 30 seconds prior to origin of earthquake
+tend = 240  # end time is 240 seconds after origin of earthquake
+dt = 0.01
+n_samp = int((tend - tbegin) / dt + 1)
+
+# vp = 6500 # m/s
+# vs =
 
 dataset_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset'
 outlier_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/Outliers'
@@ -31,12 +40,14 @@ headers = ['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'sta
 # METHODS:
 # earliest -- Uses PhaseNet's earliest pick as the arrival pick
 # max_prob -- Uses the PhaseNet pick with the highest probability as the arrival pick
+# hybrid -- Prioritize early picks unless there is a high probability
 
 methods = {
     "earliest": 'Uses PhaseNets earliest pick as the arrival pick.',
     "max_prob": 'Uses the PhaseNet pick with the highest probability as the arrival pick.',
     "IQR": 'IQR outliers excluded',
-    "over": 'outliers over a limit excluded'
+    "over": 'outliers over a limit excluded',
+    "range": 'vps ratios in range'
 }
 
 
@@ -139,16 +150,19 @@ print("Success! Merged dataframe being saved to ", dataset_path)
 print("=================================================================================")
 
 
-def picker(df, method):
+def picker(df, method, savepath):
     print("Initializing pick algorithm... (method = {})".format(method))
     fname = []
+    vps = []
 
     p_pick = []
+    itp = []
     p_res = []
     p_prob = []
     p_empty_count = 0
 
     s_pick = []
+    its = []
     s_res = []
     s_prob = []
     s_empty_count = 0
@@ -158,11 +172,13 @@ def picker(df, method):
             fname.append(df['fname'][row])
             if not df['itp'][row]:
                 p_pick.append(np.nan)
+                itp.append(np.nan)
                 p_res.append(np.nan)
                 p_prob.append(np.nan)
                 p_empty_count += 1
             elif df['itp'][row][0] != 1:
                 p_pick.append(df['P_phasenet'][row][0])
+                itp.append(int(df['itp'][row][0]))
                 p_prob.append(df['tp_prob'][row][0])
                 try:
                     p_res.append(df['P_residual'][row][0])
@@ -177,20 +193,24 @@ def picker(df, method):
                     pass
                 try:
                     p_pick.append(df['P_phasenet'][row][1])
+                    itp.append(int(df['itp'][row][1]))
                     p_prob.append(df['tp_prob'][row][1])
                 except IndexError:
                     p_pick.append(np.nan)
+                    itp.append(np.nan)
                     p_prob.append(np.nan)
                     p_empty_count += 1
                     pass
 
             if not df['its'][row]:
                 s_pick.append(np.nan)
+                its.append(np.nan)
                 s_res.append(np.nan)
                 s_prob.append(np.nan)
                 s_empty_count += 1
             elif df['its'][row][0] != 1:
                 s_pick.append(df['S_phasenet'][row][0])
+                its.append(int(df['its'][row][0]))
                 s_prob.append(df['ts_prob'][row][0])
                 try:
                     s_res.append(df['S_residual'][row][0])
@@ -204,15 +224,81 @@ def picker(df, method):
                     s_res.append(np.nan)
                     pass
                 try:
-                    s_pick.append(df['P_phasenet'][row][1])
+                    s_pick.append(df['S_phasenet'][row][1])
+                    its.append(int(df['its'][row][1]))
                     s_prob.append(df['ts_prob'][row][1])
                 except IndexError:
                     s_pick.append(np.nan)
+                    its.append(np.nan)
                     s_prob.append(np.nan)
                     s_empty_count += 1
                     pass
-
     elif method == 'max_prob':
+        for row in range(len(df)):
+            fname.append(df['fname'][row])
+            if not df['itp'][row]:
+                p_pick.append(np.nan)
+                itp.append(np.nan)
+                p_res.append(np.nan)
+                p_prob.append(np.nan)
+                p_empty_count += 1
+            else:
+                if int(df['itp'][row][df['tp_prob'][row].index(max(df['tp_prob'][row]))]) != 1:
+                    p_pick.append(df['P_phasenet'][row][df['tp_prob'][row].index(max(df['tp_prob'][row]))])
+                    itp.append(int(df['itp'][row][df['tp_prob'][row].index(max(df['tp_prob'][row]))]))
+                    p_prob.append(max(df['tp_prob'][row]))
+                    try:
+                        p_res.append(df['P_residual'][row][df['tp_prob'][row].index(max(df['tp_prob'][row]))])
+                    except IndexError:
+                        p_res.append(np.nan)
+                else:
+                    try:
+                        p_res.append(df['P_residual'][row][1])
+                    except IndexError:
+                        p_res.append(np.nan)
+                        pass
+                    try:
+                        p_pick.append(df['P_phasenet'][row][1])
+                        itp.append(int(df['itp'][row][1]))
+                        p_prob.append(df['tp_prob'][row][1])
+                    except IndexError:
+                        p_pick.append(np.nan)
+                        itp.append(np.nan)
+                        p_prob.append(np.nan)
+                        p_empty_count += 1
+                        pass
+            if not df['its'][row]:
+                s_pick.append(np.nan)
+                its.append(np.nan)
+                s_res.append(np.nan)
+                s_prob.append(np.nan)
+                s_empty_count += 1
+            else:
+                if int(df['its'][row][df['ts_prob'][row].index(max(df['ts_prob'][row]))]) != 1:
+                    s_pick.append(df['S_phasenet'][row][df['ts_prob'][row].index(max(df['ts_prob'][row]))])
+                    its.append(int(df['its'][row][df['ts_prob'][row].index(max(df['ts_prob'][row]))]))
+                    s_prob.append(max(df['ts_prob'][row]))
+                    try:
+                        s_res.append(df['S_residual'][row][df['ts_prob'][row].index(max(df['ts_prob'][row]))])
+                    except IndexError:
+                        s_res.append(np.nan)
+                else:
+                    try:
+                        s_res.append(df['S_residual'][row][1])
+                    except IndexError:
+                        s_res.append(np.nan)
+                        pass
+                    try:
+                        s_pick.append(df['S_phasenet'][row][1])
+                        its.append(int(df['its'][row][1]))
+                        s_prob.append(df['ts_prob'][row][1])
+                    except IndexError:
+                        s_pick.append(np.nan)
+                        its.append(np.nan)
+                        s_prob.append(np.nan)
+                        s_empty_count += 1
+                        pass
+    elif method == 'hybrid':
         for row in range(len(df)):
             fname.append(df['fname'][row])
             if not df['itp'][row]:
@@ -220,27 +306,27 @@ def picker(df, method):
                 p_res.append(np.nan)
                 p_prob.append(np.nan)
                 p_empty_count += 1
-            else:
-                p_pick.append(df['P_phasenet'][row][df['tp_prob'][row].index(max(df['tp_prob'][row]))])
-                p_prob.append(max(df['tp_prob'][row]))
+            elif len(df['itp'][row]) == 1:
+                p_pick.append(df['P_phasenet'][row][0])
+                p_prob.append(df['tp_prob'][row][0])
                 try:
-                    p_res.append(df['P_residual'][row][df['tp_prob'][row].index(max(df['tp_prob'][row]))])
+                    p_res.append(df['P_residual'][row][0])
                 except IndexError:
                     p_res.append(np.nan)
-            if not df['its'][row]:
-                s_pick.append(np.nan)
-                s_res.append(np.nan)
-                s_prob.append(np.nan)
-                s_empty_count += 1
+                    pass
             else:
-                s_pick.append(df['S_phasenet'][row][df['ts_prob'][row].index(max(df['ts_prob'][row]))])
-                s_prob.append(max(df['ts_prob'][row]))
-                try:
-                    s_res.append(df['S_residual'][row][df['ts_prob'][row].index(max(df['ts_prob'][row]))])
-                except IndexError:
-                    s_res.append(np.nan)
+                if max(df['tp_prob'][row]) > 0.75:
+                    pass
     else:
         print("Invalid method: method = (['earliest'], ['max_prob')]")
+
+    vps = []
+    for row in range(len(df)):
+        try:
+            vps.append(its[row] / itp[row])
+        except ValueError:
+            vps.append(np.nan)
+            pass
 
     pick_dict = {
         "P_phasenet": p_pick,
@@ -249,22 +335,34 @@ def picker(df, method):
         "S_res": s_res,
         "P_prob": p_prob,
         "S_prob": s_prob,
+        "itp": itp,
+        "its": its,
+        "vps": vps,
         "pick_method": [method] * len(df),
         "fname": fname
     }
 
-    df_picks = pd.DataFrame(pick_dict, columns=['P_phasenet', 'P_res', 'P_prob',
-                                                'S_phasenet', 'S_res', 'S_prob', 'pick_method', 'fname'])
+    df_picks = pd.DataFrame(pick_dict, columns=['P_phasenet', 'P_res', 'P_prob', 'itp',
+                                                'S_phasenet', 'S_res', 'S_prob', 'its',
+                                                'vps', 'pick_method', 'fname'])
+    df_picks['itp'] = df_picks['itp'].astype('Int64')
+    df_picks['its'] = df_picks['its'].astype('Int64')
 
-    df_picks = pd.merge(df_picks, df[['event_id', 'station', 'P_time', 'S_time', 'fname']], how='left', on='fname')
+    df_picks = pd.merge(df_picks, df[['event_id', 'network', 'station', 'P_time', 'S_time', 'fname']], how='left',
+                        on='fname')
     df_picks = df_picks[
-        ["event_id", "station", "P_time", "P_phasenet", "P_res", "P_prob", "S_time", "S_phasenet", "S_res", "S_prob",
-         "pick_method", "fname"]].sort_values(['event_id', 'station'])
+        ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp",
+         "S_time", "S_phasenet", "S_res", "S_prob", "its",
+         "vps", "pick_method", "fname"]].sort_values(['event_id', 'station'])
+
+    df_picks.to_pickle(os.path.join(savepath, "filter_picks.pickle"))
+    df_picks.to_csv(os.path.join(savepath, "filter_picks.csv"), index=False)
+
     print("Successfully isolated PhaseNet picks. Saving df_picks as new dataframe")
     return df_picks, p_empty_count, s_empty_count
 
 
-df_picks, p_empty_count, s_empty_count = picker(df, PN_pick_method[0])
+df_picks, p_empty_count, s_empty_count = picker(df, PN_pick_method[0], outlier_path)
 
 # def csvSync(dataset, output, arrival, sorted_headers, method):
 #     log = pd.read_csv(os.path.join(dataset, 'data_log.csv'))
@@ -457,7 +555,10 @@ print("=========================================================================
 
 
 def outliers(df_picks, method, savepath):
-    print("Initializing outlier detection algorithm... (method = {})".format(method))
+    print("Initializing residual outlier detection algorithm... (method = {})".format(method))
+    m = [method] * len(df_picks)
+    df_picks['ol_method'] = m
+
     if method[0] == 'IQR':
         pq1, pq3 = np.nanpercentile(np.array(df_picks['P_res']), [25, 75])
         sq1, sq3 = np.nanpercentile(np.array(df_picks['S_res']), [25, 75])
@@ -475,82 +576,126 @@ def outliers(df_picks, method, savepath):
         s_lower_bound = -method[1]
         s_upper_bound = method[1]
     else:
-        print("Invalid outlier method: method = (['IQR'], ['over', limit])")
+        print("Invalid residual outlier method: method = (['IQR'], ['over', limit])")
 
-    print("S Upper bound ({} method): {}".format(method[0], s_upper_bound))
     print("P Lower bound ({} method): {}".format(method[0], p_lower_bound))
     print("P Upper bound ({} method): {}".format(method[0], p_upper_bound))
     print("S Lower bound ({} method): {}".format(method[0], s_lower_bound))
+    print("S Upper bound ({} method): {}".format(method[0], s_upper_bound))
 
     df_picks['P_inrange'] = df_picks['P_res'].between(p_lower_bound, p_upper_bound, inclusive=True)
     df_picks['S_inrange'] = df_picks['S_res'].between(s_lower_bound, s_upper_bound, inclusive=True)
 
-    m = [method] * len(df_picks)
-    df_picks['ol_method'] = m
-
     p_outliers = df_picks.loc[(df_picks['P_res'].notna()) & (df_picks['P_inrange'] == False)]
-    p_outliers = p_outliers.drop(columns=["S_time", "S_phasenet", "S_res", "S_prob", "S_inrange"])
-    p_outliers = p_outliers[["event_id", "P_time", "P_phasenet", "P_res", "P_prob", "P_inrange",
+    s_outliers = df_picks.loc[(df_picks['S_res'].notna()) & (df_picks['S_inrange'] == False)]
+
+    p_outliers = p_outliers[["event_id", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange",
                              "pick_method", "ol_method", "fname"]]
+    s_outliers = s_outliers[["event_id", "station", "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange",
+                             "pick_method", "ol_method", "fname"]]
+
     p_outliers.to_pickle(os.path.join(savepath, "p_outliers.pickle"))
     p_outliers.to_csv(os.path.join(savepath, "p_outliers.csv"), index=False)
-
-    s_outliers = df_picks.loc[(df_picks['S_res'].notna()) & (df_picks['S_inrange'] == False)]
-    s_outliers = s_outliers.drop(columns=["P_time", "P_phasenet", "P_res", "P_prob", "P_inrange"])
-    s_outliers = s_outliers[["event_id", "S_time", "S_phasenet", "S_res", "S_prob", "S_inrange",
-                             "pick_method", "ol_method", "fname"]]
     s_outliers.to_pickle(os.path.join(savepath, "s_outliers.pickle"))
     s_outliers.to_csv(os.path.join(savepath, "s_outliers.csv"), index=False)
 
-    df_picks = df_picks[["event_id", "P_time", "P_phasenet", "P_res", "P_prob", "P_inrange",
-                         "S_time", "S_phasenet", "S_res", "S_prob", "S_inrange",
-                         "pick_method", "ol_method", "fname"]]
+    df_picks = df_picks[
+        ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange",
+         "S_time", "S_phasenet", "S_res", "S_prob", "S_inrange", "its",
+         "vps", "pick_method", "ol_method", "fname"]]
 
     df_picks.to_pickle(os.path.join(savepath, "filter_picks.pickle"))
     df_picks.to_csv(os.path.join(savepath, "filter_picks.csv"), index=False)
-    print("Outliers isolated and saved to ", savepath)
+    print("Residual outliers isolated and saved to ", savepath)
     return df_picks, p_outliers, s_outliers
 
 
 df_picks, p_out, s_out = outliers(df_picks, outlier_method, outlier_path)
+
+
+def vpsOutliers(df_picks, method, savepath):
+    print("Initializing VPS outlier detection algorithm... (method = {})".format(method))
+    m = [method] * len(df_picks)
+    df_picks['vps_ol_method'] = m
+
+    if method[0] == 'IQR':
+        vpsq1, vpsq3 = np.nanpercentile(np.array(df_picks['vps']), [25, 75])
+        vps_iqr = vpsq3 - vpsq1
+        vps_lower_bound = vpsq1 - (1.5 * vps_iqr)
+        vps_upper_bound = vpsq3 + (1.5 * vps_iqr)
+    elif method[0] == 'range':
+        vps_lower_bound = method[1]
+        vps_upper_bound = method[2]
+    else:
+        print("Invalid VPS outlier method: method = (['IQR'], ['range', lower, upper])")
+
+    df_picks['vps_inrange'] = df_picks['vps'].between(vps_lower_bound, vps_upper_bound, inclusive=True)
+
+    vps_outliers = df_picks.loc[(df_picks['vps'].notna()) & (df_picks['vps_inrange'] == False)]
+    vps_outliers = vps_outliers[["event_id", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange",
+                                 "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange",
+                                 "vps", "vps_inrange", "pick_method", "ol_method", "fname"]]
+
+    vps_outliers.to_pickle(os.path.join(savepath, "vps_outliers.pickle"))
+    vps_outliers.to_csv(os.path.join(savepath, "vps_outliers.csv"), index=False)
+
+    df_picks = df_picks[
+        ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange",
+         "S_time", "S_phasenet", "S_res", "S_prob", "S_inrange", "its",
+         "vps", "vps_inrange", "pick_method", "ol_method", "vps_ol_method", "fname"]]
+
+    print("VPS outliers isolated and saved to ", savepath)
+    return df_picks, vps_outliers
+
+
+df_picks, vps_out = vpsOutliers(df_picks, vps_method, outlier_path)
+
 print("=================================================================================")
 
 
-def Histogram(df_picks, phase, p_out, s_out, plot_path, Methods, method):
+def Histogram(df_picks, phase, p_out, s_out, vps_out, plot_path, Methods, method):
     fig, ax = plt.subplots()
     if phase == 'P':
         c = '#1f77b4'
         d = df_picks['P_res'][df_picks['P_inrange']]
         ol = len(p_out)
+        rem = len(df_picks) - len(d)
         path = os.path.join(plot_path, 'p_hist.png')
+        plt.xlim(-method[1], method[1])
     elif phase == 'S':
         c = '#ff7f0e'
         d = df_picks['S_res'][df_picks['S_inrange']]
         ol = len(s_out)
+        rem = len(df_picks) - len(d)
         path = os.path.join(plot_path, 's_hist.png')
+        plt.xlim(-method[1], method[1])
+    elif phase == 'vps':
+        c = '#d62728'
+        ol = '{} IQR'.format(len(vps_out))
+        rem = len(vps_out)
+        d = df_picks['vps'][df_picks['vps_inrange']]
+        path = os.path.join(plot_path, 'vps_hist.png')
     else:
-        print("Invalid phase entry: phase= ('P', 'S')")
+        print("Invalid phase entry: phase= ('P', 'S', 'vps')")
 
     n, bins, patches = plt.hist(x=d, bins='auto', color=c,
                                 alpha=0.7, rwidth=0.85)
-
-    plt.xlim(-method[1], method[1])
 
     plt.grid(axis='y', alpha=0.75)
     plt.xlabel('Residual time (s)')
     plt.ylabel('Frequency*')
     plt.title('Histogram of {}-pick Residuals (expected-observed)'.format(phase))
     textstr = '\n'.join((
-        r'$n=%.0f$' % (len(d),),
-        r'$\mu=%.4f$' % (statistics.mean(d),),
-        r'$\mathrm{median}=%.4f$' % (round(statistics.median(d), 4),),
-        r'$\sigma=%.4f$' % (statistics.pstdev(d),)))
+        r'$n=%.0f$' % (np.count_nonzero(~np.isnan(d)),),
+        r'$\mu=%.4f$' % (np.nanmean(d),),
+        r'$\mathrm{median}=%.4f$' % (round(np.nanmedian(d), 4),),
+        r'$\sigma=%.4f$' % (np.nanstd(d),)))
     ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=14,
             verticalalignment='top',
             bbox=dict(boxstyle='square,pad=.6', facecolor='lightgrey', edgecolor='black', alpha=1))
     plt.annotate('*method={}: {} '.format(method, Methods[method[0]]), (0, 0), (0, -40),
                  xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
-    plt.annotate('{} total arrivals removed, {} outliers removed'.format(len(df_picks) - len(d), ol), (0, 0), (0, -50),
+    plt.annotate('{} total arrivals removed, {} outliers removed'.format(rem, ol), (0, 0), (0, -50),
                  xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
     maxfreq = n.max()
     plt.ylim(ymax=np.ceil(maxfreq / 10) * 10 if maxfreq % 10 else maxfreq + 10)
@@ -558,8 +703,9 @@ def Histogram(df_picks, phase, p_out, s_out, plot_path, Methods, method):
     plt.show()
 
 
-Histogram(df_picks, 'P', p_out, s_out, plot_path, methods, outlier_method)
-Histogram(df_picks, 'S', p_out, s_out, plot_path, methods, outlier_method)
+Histogram(df_picks, 'P', p_out, s_out, vps_out, plot_path, methods, outlier_method)
+Histogram(df_picks, 'S', p_out, s_out, vps_out, plot_path, methods, outlier_method)
+Histogram(df_picks, 'vps', p_out, s_out, vps_out, plot_path, methods, outlier_method)
 
 
 # %%
@@ -579,21 +725,23 @@ def scatterPlot(df_picks, plot_path, method):
     fig.suptitle('Scatterplot of P & S Residuals by PhaseNet Probability')
 
     gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.3, left=0.1, right=0.95)
-    gs2 = fig.add_gridspec(ncols=1, nrows=2, top=0.25, bottom=0.05, left=0.1, right=0.95, hspace=0.02)
+    gs2 = fig.add_gridspec(ncols=1, nrows=2, top=0.22, bottom=0.02, left=0.1, right=0.95, hspace=0.02)
 
-    ax1 = plt.subplot(gs1[0], xlim=(0, method[1]))
+    ax1 = plt.subplot(gs1[0], xlim=(0, method[1]), ylim=(0, 1))
     ax1.grid(axis='both', alpha=0.4)
-    ax1.set(ylabel='PhaseNet probability*')
-    pl, = ax1.plot(px, p_intercept + p_slope * px, color='#333333', linestyle='dashdot',lw = 2.4,
+    ax1.set(ylabel='PhaseNet probability*', xlabel='abs(Residual time) (s)')
+
+    pl, = ax1.plot(px, p_intercept + p_slope * px, color='#333333', linestyle='dashdot', lw=2.4,
                    label="y=%.2fx+%.2f" % (p_slope, p_intercept))
-    sl, = ax1.plot(sx, s_intercept + s_slope * sx, color='#333333', linestyle='dotted',lw=2.65,
+    sl, = ax1.plot(sx, s_intercept + s_slope * sx, color='#333333', linestyle='dotted', lw=2.65,
                    label="y=%.2fx+%.2f" % (s_slope, s_intercept))
     pscat = ax1.scatter(p_res_np, p_prob_np)
     pscat.set_label('P')
     sscat = ax1.scatter(s_res_np, s_prob_np)
     sscat.set_label('S')
     leg = ax1.legend([pscat, pl, sscat, sl],
-                     ['P', "y=%.2fx+%.2f" % (p_slope, p_intercept), 'S', "y=%.2fx+%.2f" % (s_slope, s_intercept)])
+                     ['P', "y=%.2fx+%.2f" % (p_slope, p_intercept), 'S', "y=%.2fx+%.2f" % (s_slope, s_intercept)],
+                     loc='upper right')
     leg.get_frame().set_edgecolor('#262626')
 
     ax2 = plt.subplot(gs2[0], frame_on=False, xlim=(0, method[1]))
@@ -605,7 +753,7 @@ def scatterPlot(df_picks, plot_path, method):
                 medianprops=dict(color='k'),
                 )
 
-    ax3 = plt.subplot(gs2[1], frame_on=False, xlim=(0, method[1]), xlabel='abs(Residual time) (s)')
+    ax3 = plt.subplot(gs2[1], frame_on=False, xlim=(0, method[1]))
     ax3.tick_params(axis=u'both', which=u'both', length=0)
     plt.setp(ax3.get_xticklabels(), visible=False)
     plt.setp(ax3.get_yticklabels(), visible=False)
@@ -645,3 +793,52 @@ pssr = np.nansum([i ** 2 for i in df_picks['P_res']])
 sssr = np.nansum([i ** 2 for i in df_picks['S_res']])
 print("P-SSR = ", pssr)
 print("S-SSR - ", sssr)
+
+
+# %%
+def vpsPlot(df_picks, samples, plot_path):
+    itp = df_picks['itp'][df_picks['vps_inrange']]
+    its = df_picks['its'][df_picks['vps_inrange']]
+    vps = df_picks['vps'][df_picks['vps_inrange']]
+
+    plt.close()
+
+    fig = plt.figure(constrained_layout=False)
+    fig.suptitle('PhaseNet VS/VP ratios')
+
+    gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.2, left=0.13, right=0.95)
+    gs2 = fig.add_gridspec(ncols=1, nrows=1, top=0.15, bottom=0.02, left=0.1, right=0.95)
+
+    ax1 = plt.subplot(gs1[0], xlim=(0, samples + 100), ylim=(0, samples + 100))
+    ax1.grid(axis='both', alpha=0.4)
+    ax1.set(ylabel='its', xlabel='itp')
+
+    x = np.linspace(0, samples + 100, len(vps))
+    mean_l, = ax1.plot(x, np.mean(vps) * x, color='#333333', linestyle='dashdot', lw=2.4)
+    # med_l, = ax1.plot(x, np.median(vps) * x, color='#333333', linestyle=':', lw=2.4)
+
+    slope, intercept, r_value, p_value, std_err = stats.linregress(itp.astype('float32'), its.astype('float32'))
+    fit_l, = ax1.plot(x, intercept + slope * x, color='#333333', linestyle=':', lw=2.4)
+
+    ax1.scatter(itp, its, c='#d62728')
+    leg = ax1.legend([mean_l, fit_l],
+                     ["mean: y=%.2fx+%.0f" % (np.mean(vps), 0), "reg fit: y=%.2fx+%.0f" % (slope, intercept)],
+                     loc='upper left')
+    leg.get_frame().set_edgecolor('#262626')
+
+    ax2 = plt.subplot(gs2[0], frame_on=False, xlim=(0, samples + 100))
+    ax2.tick_params(axis=u'both', which=u'both', length=0)
+    plt.setp(ax2.get_xticklabels(), visible=False)
+    plt.setp(ax2.get_yticklabels(), visible=False)
+    ax2.boxplot(itp, vert=False, whis=(0, 100), patch_artist=True,
+                boxprops=dict(facecolor='#d62728', color='k'),
+                medianprops=dict(color='k'),
+                )
+
+    plt.savefig(os.path.join(plot_path, 'vps.png'))
+    plt.show()
+    plt.close()
+
+
+vpsPlot(df_picks, n_samp, plot_path)
+# %%
