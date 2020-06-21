@@ -18,7 +18,8 @@ from scipy import stats
 
 PN_pick_method = ['max_prob']
 outlier_method = ['over', 2]
-vps_method = ['range', 0, 500]
+# vps_method = ['range', 0, 500]
+vps_method = ['outlier']
 
 tbegin = -30  # starttime is 30 seconds prior to origin of earthquake
 tend = 240  # end time is 240 seconds after origin of earthquake
@@ -31,7 +32,7 @@ n_samp = int((tend - tbegin) / dt + 1)
 dataset_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset'
 outlier_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/Outliers'
 output_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/PhaseNet/output'
-arrival_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/Arrival.pickle'
+arrival_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events2/Arrival.pickle'
 plot_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/Plots'
 
 headers = ['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end', 'P_residual', 'P_time',
@@ -613,7 +614,7 @@ def outliers(df_picks, method, savepath):
 df_picks, p_out, s_out = outliers(df_picks, outlier_method, outlier_path)
 
 
-def vpsOutliers(df_picks, method, savepath):
+def vpsOutliers(df_picks, p_out, s_out, method, savepath):
     print("Initializing VPS outlier detection algorithm... (method = {})".format(method))
     m = [method] * len(df_picks)
     df_picks['vps_ol_method'] = m
@@ -623,13 +624,18 @@ def vpsOutliers(df_picks, method, savepath):
         vps_iqr = vpsq3 - vpsq1
         vps_lower_bound = vpsq1 - (1.5 * vps_iqr)
         vps_upper_bound = vpsq3 + (1.5 * vps_iqr)
+
+        df_picks['vps_inrange'] = df_picks['vps'].between(vps_lower_bound, vps_upper_bound, inclusive=True)
     elif method[0] == 'range':
         vps_lower_bound = method[1]
         vps_upper_bound = method[2]
+
+        df_picks['vps_inrange'] = df_picks['vps'].between(vps_lower_bound, vps_upper_bound, inclusive=True)
+    elif method[0] == 'outlier':
+        fn = pd.concat([p_out['fname'], s_out['fname']])
+        df_picks['vps_inrange'] = (df_picks['fname'].isin(fn) == False) & (df_picks['vps'].notna())
     else:
         print("Invalid VPS outlier method: method = (['IQR'], ['range', lower, upper])")
-
-    df_picks['vps_inrange'] = df_picks['vps'].between(vps_lower_bound, vps_upper_bound, inclusive=True)
 
     vps_outliers = df_picks.loc[(df_picks['vps'].notna()) & (df_picks['vps_inrange'] == False)]
     vps_outliers = vps_outliers[["event_id", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange",
@@ -648,7 +654,7 @@ def vpsOutliers(df_picks, method, savepath):
     return df_picks, vps_outliers
 
 
-df_picks, vps_out = vpsOutliers(df_picks, vps_method, outlier_path)
+df_picks, vps_out = vpsOutliers(df_picks, p_out, s_out, vps_method, outlier_path)
 
 print("=================================================================================")
 
