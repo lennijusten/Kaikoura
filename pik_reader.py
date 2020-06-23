@@ -19,7 +19,7 @@ from scipy import stats
 
 record = True
 
-PN_pick_method = ['max_prob']
+PN_pick_method = ['min_res']
 outlier_method = ['over', 2]
 # vps_method = ['range', 0, 500]
 vps_method = ['outlier']
@@ -52,6 +52,7 @@ headers = ['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'sta
 methods = {
     "earliest": 'Uses PhaseNets earliest pick as the arrival pick.',
     "max_prob": 'Uses the PhaseNet pick with the highest probability as the arrival pick.',
+    "min_res": 'PhaseNet picks with the smallest residual (cheating method)',
     "IQR": 'IQR outliers excluded',
     "over": 'outliers over a limit excluded',
     "range": 'vps ratios in range'
@@ -324,6 +325,31 @@ def picker(df, method, savepath):
             else:
                 if max(df['tp_prob'][row]) > 0.75:
                     pass
+    elif method == 'min_res':
+        for row in range(len(df)):
+            fname.append(df['fname'][row])
+            if not df['P_residual'][row]:
+                p_pick.append(np.nan)
+                p_res.append(np.nan)
+                p_prob.append(np.nan)
+                itp.append(np.nan)
+                p_empty_count += 1
+            else:
+                p_pick.append(df['P_phasenet'][row][(np.abs(df['P_residual'][row])).argmin()])
+                p_prob.append(df['tp_prob'][row][(np.abs(df['P_residual'][row])).argmin()])
+                p_res.append(df['P_residual'][row][(np.abs(df['P_residual'][row])).argmin()])
+                itp.append(df['itp'][row][(np.abs(df['P_residual'][row])).argmin()])
+            if not df['S_residual'][row]:
+                s_pick.append(np.nan)
+                s_res.append(np.nan)
+                s_prob.append(np.nan)
+                its.append(np.nan)
+                s_empty_count += 1
+            else:
+                s_pick.append(df['S_phasenet'][row][(np.abs(df['S_residual'][row])).argmin()])
+                s_prob.append(df['ts_prob'][row][(np.abs(df['S_residual'][row])).argmin()])
+                s_res.append(df['S_residual'][row][(np.abs(df['S_residual'][row])).argmin()])
+                its.append(df['its'][row][(np.abs(df['S_residual'][row])).argmin()])
     else:
         print("Invalid method: method = (['earliest'], ['max_prob')]")
 
