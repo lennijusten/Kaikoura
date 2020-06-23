@@ -15,9 +15,11 @@ import QUAKEML
 from pathlib import Path
 import numpy as np
 import os
-
+import random
+random.seed()
 # %% parameters we can set#########################################################
 
+time_method = 'random'
 ### Saving info
 directorytosaveto = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events'  ### we will save waveforms as well as various pandas structures
 # NOTE: python does not like ~s for paths so you have to be super explicit
@@ -117,8 +119,14 @@ for iarr,_ in enumerate(Arrival['event_id']):
     # things we need for grabbing data
     # chan = 'ZNE'  # channel information
     location = '*'  # location information
-    tbegin = otime - 30  # starttime is 30 seconds prior to origin of earthquake
-    tend = otime + 240  # end time is 240 seconds after origin of earthquake
+
+    if time_method == 'random':
+        r = random.randrange(5, 30)
+        tbegin = otime - r
+        tend = otime + 130 - r
+    else:
+        tbegin = otime - 30  # starttime is 30 seconds prior to origin of earthquake
+        tend = otime + 100  # end time is 240 seconds after origin of earthquake
 
     # make event_id directory to save file in
     Path(directorytosaveto + '/' + event_id).mkdir(parents=False, exist_ok=True)
