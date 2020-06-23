@@ -4,6 +4,7 @@
 
 # Description:
 
+import datetime
 import obspy
 import numpy as np
 import os
@@ -16,15 +17,20 @@ import itertools
 import statistics
 from scipy import stats
 
+record = True
+
 PN_pick_method = ['max_prob']
 outlier_method = ['over', 2]
 # vps_method = ['range', 0, 500]
 vps_method = ['outlier']
 
 tbegin = -30  # starttime is 30 seconds prior to origin of earthquake
-tend = 240  # end time is 240 seconds after origin of earthquake
+tend = 100  # end time is 240 seconds after origin of earthquake
 dt = 0.01
 n_samp = int((tend - tbegin) / dt + 1)
+
+p_threshold = 1
+s_threshold = 1
 
 # vp = 6500 # m/s
 # vs =
@@ -32,7 +38,7 @@ n_samp = int((tend - tbegin) / dt + 1)
 dataset_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset'
 outlier_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/Outliers'
 output_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/PhaseNet/output'
-arrival_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events2/Arrival.pickle'
+arrival_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/Arrival.pickle'
 plot_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/Plots'
 
 headers = ['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end', 'P_residual', 'P_time',
@@ -723,6 +729,7 @@ def scatterPlot(df_picks, plot_path, method):
 
     px = np.linspace(0, method[1], len(p_res_np))
     sx = np.linspace(0, method[1], len(s_res_np))
+
     p_slope, p_intercept, pr_value, pp_value, p_std_err = stats.linregress(p_res_np, p_prob_np)
     s_slope, s_intercept, sr_value, sp_value, s_std_err = stats.linregress(s_res_np, s_prob_np)
 
@@ -790,21 +797,15 @@ def scatterPlot(df_picks, plot_path, method):
 
 
 scatterPlot(df_picks, plot_path, outlier_method)
-# %%
-
-print("{} P outliers excluded".format(len(p_out)))
-print("{} S outliers excluded".format(len(s_out)))
-
-pssr = np.nansum([i ** 2 for i in df_picks['P_res']])
-sssr = np.nansum([i ** 2 for i in df_picks['S_res']])
-print("P-SSR = ", pssr)
-print("S-SSR - ", sssr)
 
 
 # %%
-def vpsPlot(df_picks, samples, plot_path):
-    itp = df_picks['itp'][df_picks['vps_inrange']]
-    its = df_picks['its'][df_picks['vps_inrange']]
+
+
+# %%
+def vpsPlot(df_picks, samples, delta, plot_path):
+    itp = df_picks['itp'][df_picks['vps_inrange']] * delta
+    its = df_picks['its'][df_picks['vps_inrange']] * delta
     vps = df_picks['vps'][df_picks['vps_inrange']]
 
     plt.close()
@@ -815,11 +816,11 @@ def vpsPlot(df_picks, samples, plot_path):
     gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.2, left=0.13, right=0.95)
     gs2 = fig.add_gridspec(ncols=1, nrows=1, top=0.15, bottom=0.02, left=0.1, right=0.95)
 
-    ax1 = plt.subplot(gs1[0], xlim=(0, samples + 100), ylim=(0, samples + 100))
+    ax1 = plt.subplot(gs1[0], xlim=(0, (samples + 100) * delta), ylim=(0, (samples + 100) * delta))
     ax1.grid(axis='both', alpha=0.4)
-    ax1.set(ylabel='its', xlabel='itp')
+    ax1.set(ylabel='S arrival (s)', xlabel='P arrival (s)')
 
-    x = np.linspace(0, samples + 100, len(vps))
+    x = np.linspace(0, (samples + 100) * delta, len(vps))
     mean_l, = ax1.plot(x, np.mean(vps) * x, color='#333333', linestyle='dashdot', lw=2.4)
     # med_l, = ax1.plot(x, np.median(vps) * x, color='#333333', linestyle=':', lw=2.4)
 
@@ -832,7 +833,7 @@ def vpsPlot(df_picks, samples, plot_path):
                      loc='upper left')
     leg.get_frame().set_edgecolor('#262626')
 
-    ax2 = plt.subplot(gs2[0], frame_on=False, xlim=(0, samples + 100))
+    ax2 = plt.subplot(gs2[0], frame_on=False, xlim=(0, (samples + 100) * delta))
     ax2.tick_params(axis=u'both', which=u'both', length=0)
     plt.setp(ax2.get_xticklabels(), visible=False)
     plt.setp(ax2.get_yticklabels(), visible=False)
@@ -846,5 +847,99 @@ def vpsPlot(df_picks, samples, plot_path):
     plt.close()
 
 
-vpsPlot(df_picks, n_samp, plot_path)
+vpsPlot(df_picks, n_samp, dt, plot_path)
 # %%
+
+# %%
+def wadati(df_picks, samples, delta, savepath):
+    itp = df_picks['itp'][df_picks['vps_inrange']] * delta
+    its = df_picks['its'][df_picks['vps_inrange']] * delta
+    vps = (its-itp)/itp
+
+    plt.close()
+
+    fig = plt.figure(constrained_layout=False)
+    fig.suptitle('Wadati Plot')
+
+    gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.2, left=0.13, right=0.95)
+    gs2 = fig.add_gridspec(ncols=1, nrows=1, top=0.15, bottom=0.02, left=0.1, right=0.95)
+
+    ax1 = plt.subplot(gs1[0], xlim=(0, (samples + 100) * delta), ylim=(0, (samples + 100) * delta))
+    ax1.grid(axis='both', alpha=0.4)
+    ax1.set(ylabel='S arrival (s)', xlabel='P arrival (s)')
+
+    # x = np.linspace(0, (samples + 100) * delta, len(vps))
+    # mean_l, = ax1.plot(x, np.mean(vps) * x, color='#333333', linestyle='dashdot', lw=2.4)
+    # # med_l, = ax1.plot(x, np.median(vps) * x, color='#333333', linestyle=':', lw=2.4)
+    #
+    # slope, intercept, r_value, p_value, std_err = stats.linregress(itp.astype('float32'), its.astype('float32'))
+    # fit_l, = ax1.plot(x, intercept + slope * x, color='#333333', linestyle=':', lw=2.4)
+    #
+    ax1.scatter(its-itp, its, c='#d62728')
+    # leg = ax1.legend([mean_l, fit_l],
+    #                  ["mean: y=%.2fx+%.0f" % (np.mean(vps), 0), "reg fit: y=%.2fx+%.0f" % (slope, intercept)],
+    #                  loc='upper left')
+    # leg.get_frame().set_edgecolor('#262626')
+
+    ax2 = plt.subplot(gs2[0], frame_on=False, xlim=(0, (samples + 100) * delta))
+    ax2.tick_params(axis=u'both', which=u'both', length=0)
+    plt.setp(ax2.get_xticklabels(), visible=False)
+    plt.setp(ax2.get_yticklabels(), visible=False)
+    ax2.boxplot(itp, vert=False, whis=(0, 100), patch_artist=True,
+                boxprops=dict(facecolor='#d62728', color='k'),
+                medianprops=dict(color='k'),
+                )
+
+    plt.savefig(os.path.join(plot_path, 'wadati.png'))
+    plt.show()
+    plt.close()
+
+
+wadati(df_picks, n_samp, dt, plot_path)
+
+# %%
+
+def summary(df_picks, pick_method, outlier_method, vps_method, p_thresh, s_thresh, record, savepath):
+    pssr = np.nansum([i ** 2 for i in df_picks['P_res'][df_picks['P_inrange']]])
+    sssr = np.nansum([i ** 2 for i in df_picks['S_res'][df_picks['S_inrange']]])
+
+    Np = np.count_nonzero(~np.isnan(df_picks['P_res'][df_picks['P_inrange']]))
+    Ns = np.count_nonzero(~np.isnan(df_picks['S_res'][df_picks['S_inrange']]))
+
+    prms = np.sqrt(pssr / (Np - 1))
+    srms = np.sqrt(sssr / (Ns - 1))
+
+    rms = np.sqrt((pssr + sssr) / (Np + Ns - 1))
+
+    with open(os.path.join(savepath, "summary.txt"), "a") as f:
+        print("=================================================================================", file=f)
+        if record:
+            print("----- RECORD -----", file=f)
+        print(datetime.datetime.now(), file=f)
+
+        print("Number of arrivals = ", len(df_picks), file=f)
+        print("RMS = ", rms, file=f)
+        print("Mean P residual = ", np.nanmean(df_picks['P_res'][df_picks['P_inrange']]), file=f)
+        print("Mean S residual = ", np.nanmean(df_picks['S_res'][df_picks['S_inrange']]), file=f)
+        print("---------------------------------------------------------------------------------", file=f)
+        print("P picks = {}   ({}%)".format(df_picks['P_phasenet'].count(),
+                                            (df_picks['P_phasenet'].count()/len(df_picks))*100), file=f)
+        print("S picks = {}   ({}%)".format(df_picks['S_phasenet'].count(),
+                                            (df_picks['S_phasenet'].count()/len(df_picks))*100), file=f)
+        print("P-RMS = ", prms, file=f)
+        print("S-RMS = ", srms, file=f)
+        print("P outliers excluded = {}".format(len(p_out)), file=f)
+        print("S outliers excluded = {}".format(len(s_out)), file=f)
+        print("---------------------------------------------------------------------------------", file=f)
+        print("PARAMETERS", file=f)
+        print("P threshold = ", p_thresh, file=f)
+        print("S threshold = ", s_thresh, file=f)
+        print("pick method = ", pick_method, file=f)
+        print("residual outlier method = ", outlier_method, file=f)
+        print("vps outlier method = {}".format(vps_method), file=f)
+        print("=================================================================================", file=f)
+
+    print("Summary information saved to ", os.path.join(savepath, 'summary.txt'))
+
+
+summary(df_picks, PN_pick_method, outlier_method, vps_method, p_threshold, s_threshold, record, plot_path)
