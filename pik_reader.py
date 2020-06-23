@@ -29,8 +29,8 @@ tend = 100  # end time is 240 seconds after origin of earthquake
 dt = 0.01
 n_samp = int((tend - tbegin) / dt + 1)
 
-p_threshold = 1
-s_threshold = 1
+p_threshold = 0.75
+s_threshold = 0.75
 
 # vp = 6500 # m/s
 # vs =
@@ -69,39 +69,63 @@ def initFrames(dataset_path, output_path, arrival_path):
 
 log, picks, arrivals = initFrames(dataset_path, output_path, arrival_path)
 
+
+def pickConverter(picks):
+    print("Cleaning PhaseNet pick data...")
+    for col2 in ['itp', 'its']:
+        a = []
+        for x in range(len(picks)):
+            try:
+                a.append(list(map(int, shlex.split(picks[col2][x].strip('[]')))))
+            except AttributeError:
+                a.append([])
+                pass
+        picks[col2] = a
+
+    for col3 in ['tp_prob', 'ts_prob']:
+        b = []
+        for x in range(len(picks)):
+            try:
+                b.append(list(map(float, shlex.split(picks[col3][x].strip('[]')))))
+            except AttributeError:
+                b.append([])
+                pass
+        picks[col3] = b
+    return picks
+
+
+picks = pickConverter(picks)
+
+
+def thresholder(picks, p_thresh, s_thresh):
+    print("Removing picks below probability thresholds...")
+    for row in range(len(picks)):
+        p_idx = [i for i in range(len(picks['tp_prob'][row])) if picks['tp_prob'][row][i] < p_thresh]
+        for index in sorted(p_idx, reverse=True):
+            del picks['tp_prob'][row][index]
+            del picks['itp'][row][index]
+
+        s_idx = [i for i in range(len(picks['ts_prob'][row])) if picks['ts_prob'][row][i] < s_thresh]
+        for index in sorted(s_idx, reverse=True):
+            del picks['ts_prob'][row][index]
+            del picks['its'][row][index]
+    return picks
+
+
+picks = thresholder(picks, p_threshold, s_threshold)
+
 df = pd.merge(log, picks, how='left', on=['fname'])
 df = pd.merge(df, arrivals[["event_id", "station", "channel", "network", "P_time", "S_time"]],
               how='left', on=['event_id', 'station', 'network', 'channel'])
 
-
-def typeConverter(df):
-    print("Cleaning PhaseNet pick data...")
+def timeConverter(df):
+    print("Converting arrivals to UTC DateTime...")
     for col in ['start', 'end']:
         df[col] = [obspy.UTCDateTime(x) for x in df[col]]
-
-    for col2 in ['itp', 'its']:
-        a = []
-        for x in range(len(df)):
-            try:
-                a.append(list(map(int, shlex.split(df[col2][x].strip('[]')))))
-            except AttributeError:
-                a.append([])
-                pass
-        df[col2] = a
-
-    for col3 in ['tp_prob', 'ts_prob']:
-        b = []
-        for x in range(len(df)):
-            try:
-                b.append(list(map(float, shlex.split(df[col3][x].strip('[]')))))
-            except AttributeError:
-                b.append([])
-                pass
-        df[col3] = b
     return df
 
 
-df = typeConverter(df)
+df = timeConverter(df)
 
 
 def pick2time(df):
