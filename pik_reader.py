@@ -798,7 +798,6 @@ def scatterPlot(df_picks, plot_path, method):
 
 scatterPlot(df_picks, plot_path, outlier_method)
 
-
 # %%
 
 
