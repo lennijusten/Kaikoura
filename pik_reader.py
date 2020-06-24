@@ -17,7 +17,7 @@ import itertools
 import statistics
 from scipy import stats
 
-record = True
+record = False
 
 PN_pick_method = ['min_res']
 outlier_method = ['over', 2]
@@ -29,8 +29,8 @@ tend = 100  # end time is 240 seconds after origin of earthquake
 dt = 0.01
 n_samp = int((tend - tbegin) / dt + 1)
 
-p_threshold = 0.75
-s_threshold = 0.75
+p_threshold = 0.05
+s_threshold = 0.05
 
 # vp = 6500 # m/s
 # vs =
@@ -715,239 +715,6 @@ df_picks, vps_out = vpsOutliers(df_picks, p_out, s_out, vps_method, outlier_path
 print("=================================================================================")
 
 
-def Histogram(df_picks, phase, p_out, s_out, vps_out, plot_path, Methods, method):
-    fig, ax = plt.subplots()
-    if phase == 'P':
-        c = '#1f77b4'
-        d = df_picks['P_res'][df_picks['P_inrange']]
-        ol = len(p_out)
-        rem = len(df_picks) - len(d)
-        path = os.path.join(plot_path, 'p_hist.png')
-        plt.xlim(-method[1], method[1])
-    elif phase == 'S':
-        c = '#ff7f0e'
-        d = df_picks['S_res'][df_picks['S_inrange']]
-        ol = len(s_out)
-        rem = len(df_picks) - len(d)
-        path = os.path.join(plot_path, 's_hist.png')
-        plt.xlim(-method[1], method[1])
-    elif phase == 'vps':
-        c = '#d62728'
-        ol = '{} IQR'.format(len(vps_out))
-        rem = len(vps_out)
-        d = df_picks['vps'][df_picks['vps_inrange']]
-        path = os.path.join(plot_path, 'vps_hist.png')
-    else:
-        print("Invalid phase entry: phase= ('P', 'S', 'vps')")
-
-    n, bins, patches = plt.hist(x=d, bins='auto', color=c,
-                                alpha=0.7, rwidth=0.85)
-
-    plt.grid(axis='y', alpha=0.75)
-    plt.xlabel('Residual time (s)')
-    plt.ylabel('Frequency*')
-    plt.title('Histogram of {}-pick Residuals (expected-observed)'.format(phase))
-    textstr = '\n'.join((
-        r'$n=%.0f$' % (np.count_nonzero(~np.isnan(d)),),
-        r'$\mu=%.4f$' % (np.nanmean(d),),
-        r'$\mathrm{median}=%.4f$' % (round(np.nanmedian(d), 4),),
-        r'$\sigma=%.4f$' % (np.nanstd(d),)))
-    ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=14,
-            verticalalignment='top',
-            bbox=dict(boxstyle='square,pad=.6', facecolor='lightgrey', edgecolor='black', alpha=1))
-    plt.annotate('*method={}: {} '.format(method, Methods[method[0]]), (0, 0), (0, -40),
-                 xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
-    plt.annotate('{} total arrivals removed, {} outliers removed'.format(rem, ol), (0, 0), (0, -50),
-                 xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
-    maxfreq = n.max()
-    plt.ylim(ymax=np.ceil(maxfreq / 10) * 10 if maxfreq % 10 else maxfreq + 10)
-    plt.savefig(path)
-    plt.show()
-
-
-Histogram(df_picks, 'P', p_out, s_out, vps_out, plot_path, methods, outlier_method)
-Histogram(df_picks, 'S', p_out, s_out, vps_out, plot_path, methods, outlier_method)
-Histogram(df_picks, 'vps', p_out, s_out, vps_out, plot_path, methods, outlier_method)
-
-
-# %%
-def scatterPlot(df_picks, plot_path, method):
-    p_res_np = abs(df_picks['P_res'][df_picks['P_inrange']])
-    s_res_np = abs(df_picks['S_res'][df_picks['S_inrange']])
-    p_prob_np = df_picks['P_prob'][df_picks['P_inrange']]
-    s_prob_np = df_picks['S_prob'][df_picks['S_inrange']]
-
-    px = np.linspace(0, method[1], len(p_res_np))
-    sx = np.linspace(0, method[1], len(s_res_np))
-
-    p_slope, p_intercept, pr_value, pp_value, p_std_err = stats.linregress(p_res_np, p_prob_np)
-    s_slope, s_intercept, sr_value, sp_value, s_std_err = stats.linregress(s_res_np, s_prob_np)
-
-    plt.close()
-    fig = plt.figure(constrained_layout=False)
-    fig.suptitle('Scatterplot of P & S Residuals by PhaseNet Probability')
-
-    gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.3, left=0.1, right=0.95)
-    gs2 = fig.add_gridspec(ncols=1, nrows=2, top=0.22, bottom=0.02, left=0.1, right=0.95, hspace=0.02)
-
-    ax1 = plt.subplot(gs1[0], xlim=(0, method[1]), ylim=(0, 1))
-    ax1.grid(axis='both', alpha=0.4)
-    ax1.set(ylabel='PhaseNet probability*', xlabel='abs(Residual time) (s)')
-
-    pl, = ax1.plot(px, p_intercept + p_slope * px, color='#333333', linestyle='dashdot', lw=2.4,
-                   label="y=%.2fx+%.2f" % (p_slope, p_intercept))
-    sl, = ax1.plot(sx, s_intercept + s_slope * sx, color='#333333', linestyle='dotted', lw=2.65,
-                   label="y=%.2fx+%.2f" % (s_slope, s_intercept))
-    pscat = ax1.scatter(p_res_np, p_prob_np)
-    pscat.set_label('P')
-    sscat = ax1.scatter(s_res_np, s_prob_np)
-    sscat.set_label('S')
-    leg = ax1.legend([pscat, pl, sscat, sl],
-                     ['P', "y=%.2fx+%.2f" % (p_slope, p_intercept), 'S', "y=%.2fx+%.2f" % (s_slope, s_intercept)],
-                     loc='upper right')
-    leg.get_frame().set_edgecolor('#262626')
-
-    ax2 = plt.subplot(gs2[0], frame_on=False, xlim=(0, method[1]))
-    ax2.tick_params(axis=u'both', which=u'both', length=0)
-    plt.setp(ax2.get_xticklabels(), visible=False)
-    plt.setp(ax2.get_yticklabels(), visible=False)
-    ax2.boxplot(p_res_np, vert=False, whis=(0, 100), patch_artist=True,
-                boxprops=dict(facecolor='#1f77b4', color='k'),
-                medianprops=dict(color='k'),
-                )
-
-    ax3 = plt.subplot(gs2[1], frame_on=False, xlim=(0, method[1]))
-    ax3.tick_params(axis=u'both', which=u'both', length=0)
-    plt.setp(ax3.get_xticklabels(), visible=False)
-    plt.setp(ax3.get_yticklabels(), visible=False)
-    ax3.boxplot(s_res_np, vert=False, whis=(0, 100), patch_artist=True,
-                boxprops=dict(facecolor='#ff7f0e', color='k'),
-                medianprops=dict(color='k'),
-                )
-
-    # fc = colors.to_rgba('lightgrey')
-    # ec = colors.to_rgba('black')
-    # fc = fc[:-1] + (0.7,)
-    # plt.annotate("y=%.3fx+%.3f" % (p_slope, p_intercept), xy=(.715, .99), xytext=(12, -12), va='top',
-    #              xycoords='axes fraction', textcoords='offset points',
-    #              bbox=dict(facecolor=fc, edgecolor=ec, boxstyle='square,pad=.6'))
-
-    # plt.annotate('*method={}: {} '.format(method, Methods[method[0]]), (0, 0), (0, -40),
-    #              xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
-    # plt.annotate('{} total arrivals removed, {} outliers removed'
-    #              .format(2 * len(df_picks) - len(p_res_np) - len(s_res_np), len(p_out) + len(s_out)), (0, 0), (0, -50),
-    #              xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
-
-    plt.savefig(os.path.join(plot_path, 'scatter.png'))
-
-    print("P:   y=%.6fx+(%.6f)" % (p_slope, p_intercept))
-    print("S:   y=%.6fx+(%.6f)" % (s_slope, s_intercept))
-    plt.show()
-    plt.close()
-
-
-scatterPlot(df_picks, plot_path, outlier_method)
-
-# %%
-
-
-# %%
-def vpsPlot(df_picks, samples, delta, plot_path):
-    itp = df_picks['itp'][df_picks['vps_inrange']] * delta
-    its = df_picks['its'][df_picks['vps_inrange']] * delta
-    vps = df_picks['vps'][df_picks['vps_inrange']]
-
-    plt.close()
-
-    fig = plt.figure(constrained_layout=False)
-    fig.suptitle('PhaseNet VS/VP ratios')
-
-    gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.2, left=0.13, right=0.95)
-    gs2 = fig.add_gridspec(ncols=1, nrows=1, top=0.15, bottom=0.02, left=0.1, right=0.95)
-
-    ax1 = plt.subplot(gs1[0], xlim=(0, (samples + 100) * delta), ylim=(0, (samples + 100) * delta))
-    ax1.grid(axis='both', alpha=0.4)
-    ax1.set(ylabel='S arrival (s)', xlabel='P arrival (s)')
-
-    x = np.linspace(0, (samples + 100) * delta, len(vps))
-    mean_l, = ax1.plot(x, np.mean(vps) * x, color='#333333', linestyle='dashdot', lw=2.4)
-    # med_l, = ax1.plot(x, np.median(vps) * x, color='#333333', linestyle=':', lw=2.4)
-
-    slope, intercept, r_value, p_value, std_err = stats.linregress(itp.astype('float32'), its.astype('float32'))
-    fit_l, = ax1.plot(x, intercept + slope * x, color='#333333', linestyle=':', lw=2.4)
-
-    ax1.scatter(itp, its, c='#d62728')
-    leg = ax1.legend([mean_l, fit_l],
-                     ["mean: y=%.2fx+%.0f" % (np.mean(vps), 0), "reg fit: y=%.2fx+%.0f" % (slope, intercept)],
-                     loc='upper left')
-    leg.get_frame().set_edgecolor('#262626')
-
-    ax2 = plt.subplot(gs2[0], frame_on=False, xlim=(0, (samples + 100) * delta))
-    ax2.tick_params(axis=u'both', which=u'both', length=0)
-    plt.setp(ax2.get_xticklabels(), visible=False)
-    plt.setp(ax2.get_yticklabels(), visible=False)
-    ax2.boxplot(itp, vert=False, whis=(0, 100), patch_artist=True,
-                boxprops=dict(facecolor='#d62728', color='k'),
-                medianprops=dict(color='k'),
-                )
-
-    plt.savefig(os.path.join(plot_path, 'vps.png'))
-    plt.show()
-    plt.close()
-
-
-vpsPlot(df_picks, n_samp, dt, plot_path)
-# %%
-
-# %%
-def wadati(df_picks, samples, delta, savepath):
-    itp = df_picks['itp'][df_picks['vps_inrange']] * delta
-    its = df_picks['its'][df_picks['vps_inrange']] * delta
-    vps = (its-itp)/itp
-
-    plt.close()
-
-    fig = plt.figure(constrained_layout=False)
-    fig.suptitle('Wadati Plot')
-
-    gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.2, left=0.13, right=0.95)
-    gs2 = fig.add_gridspec(ncols=1, nrows=1, top=0.15, bottom=0.02, left=0.1, right=0.95)
-
-    ax1 = plt.subplot(gs1[0], xlim=(0, (samples + 100) * delta), ylim=(0, (samples + 100) * delta))
-    ax1.grid(axis='both', alpha=0.4)
-    ax1.set(ylabel='S arrival (s)', xlabel='P arrival (s)')
-
-    # x = np.linspace(0, (samples + 100) * delta, len(vps))
-    # mean_l, = ax1.plot(x, np.mean(vps) * x, color='#333333', linestyle='dashdot', lw=2.4)
-    # # med_l, = ax1.plot(x, np.median(vps) * x, color='#333333', linestyle=':', lw=2.4)
-    #
-    # slope, intercept, r_value, p_value, std_err = stats.linregress(itp.astype('float32'), its.astype('float32'))
-    # fit_l, = ax1.plot(x, intercept + slope * x, color='#333333', linestyle=':', lw=2.4)
-    #
-    ax1.scatter(its-itp, its, c='#d62728')
-    # leg = ax1.legend([mean_l, fit_l],
-    #                  ["mean: y=%.2fx+%.0f" % (np.mean(vps), 0), "reg fit: y=%.2fx+%.0f" % (slope, intercept)],
-    #                  loc='upper left')
-    # leg.get_frame().set_edgecolor('#262626')
-
-    ax2 = plt.subplot(gs2[0], frame_on=False, xlim=(0, (samples + 100) * delta))
-    ax2.tick_params(axis=u'both', which=u'both', length=0)
-    plt.setp(ax2.get_xticklabels(), visible=False)
-    plt.setp(ax2.get_yticklabels(), visible=False)
-    ax2.boxplot(itp, vert=False, whis=(0, 100), patch_artist=True,
-                boxprops=dict(facecolor='#d62728', color='k'),
-                medianprops=dict(color='k'),
-                )
-
-    plt.savefig(os.path.join(plot_path, 'wadati.png'))
-    plt.show()
-    plt.close()
-
-
-wadati(df_picks, n_samp, dt, plot_path)
-
-# %%
-
 def summary(df_picks, pick_method, outlier_method, vps_method, p_thresh, s_thresh, record, savepath):
     pssr = np.nansum([i ** 2 for i in df_picks['P_res'][df_picks['P_inrange']]])
     sssr = np.nansum([i ** 2 for i in df_picks['S_res'][df_picks['S_inrange']]])
@@ -992,3 +759,315 @@ def summary(df_picks, pick_method, outlier_method, vps_method, p_thresh, s_thres
 
 
 summary(df_picks, PN_pick_method, outlier_method, vps_method, p_threshold, s_threshold, record, plot_path)
+
+
+def Histogram(df_picks, phase, p_out, s_out, vps_out, plot_path, Methods, method):
+    fig, ax = plt.subplots()
+    if phase == 'P':
+        c = '#1f77b4'
+        d = df_picks['P_res'][df_picks['P_inrange']]
+        ol = len(p_out)
+        rem = len(df_picks) - len(d)
+        path = os.path.join(plot_path, 'p_hist.png')
+        plt.xlim(-method[1], method[1])
+    elif phase == 'S':
+        c = '#ff7f0e'
+        d = df_picks['S_res'][df_picks['S_inrange']]
+        ol = len(s_out)
+        rem = len(df_picks) - len(d)
+        path = os.path.join(plot_path, 's_hist.png')
+        plt.xlim(-method[1], method[1])
+    elif phase == 'vps':
+        c = '#d62728'
+        ol = '{} IQR'.format(len(vps_out))
+        rem = len(vps_out)
+        d = df_picks['vps'][df_picks['vps_inrange']]
+        path = os.path.join(plot_path, 'vps_hist.png')
+    else:
+        print("Invalid phase entry: phase= ('P', 'S', 'vps')")
+
+    n, bins, patches = plt.hist(x=d, bins='auto', color=c,
+                                alpha=0.7, rwidth=0.85)
+    mu = np.nanmean(d)
+    sigma = np.nanstd(d)
+
+    plt.grid(axis='y', alpha=0.75)
+    plt.xlabel('Residual time (s)')
+    plt.ylabel('Frequency*')
+    plt.title('Histogram of {}-pick Residuals (expected-observed)'.format(phase))
+    textstr = '\n'.join((
+        r'$n=%.0f$' % (np.count_nonzero(~np.isnan(d)),),
+        r'$\mu=%.4f$' % (mu,),
+        r'$\mathrm{median}=%.4f$' % (round(np.nanmedian(d), 4),),
+        r'$\sigma=%.4f$' % (sigma,)))
+    ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=14,
+            verticalalignment='top',
+            bbox=dict(boxstyle='square,pad=.6', facecolor='lightgrey', edgecolor='black', alpha=1))
+    plt.annotate('*method={}: {} '.format(method, Methods[method[0]]), (0, 0), (0, -40),
+                 xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
+    plt.annotate('{} total arrivals removed, {} outliers removed'.format(rem, ol), (0, 0), (0, -50),
+                 xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
+    maxfreq = n.max()
+    plt.ylim(ymax=np.ceil(maxfreq / 10) * 10 if maxfreq % 10 else maxfreq + 10)
+    plt.savefig(path)
+    plt.show()
+
+
+Histogram(df_picks, 'P', p_out, s_out, vps_out, plot_path, methods, outlier_method)
+Histogram(df_picks, 'S', p_out, s_out, vps_out, plot_path, methods, outlier_method)
+Histogram(df_picks, 'vps', p_out, s_out, vps_out, plot_path, methods, outlier_method)
+
+
+# %%
+def scatterPlot(df_picks, plot_path, option, method):
+    p_res_np = abs(df_picks['P_res'][df_picks['P_inrange']])
+    s_res_np = abs(df_picks['S_res'][df_picks['S_inrange']])
+    p_prob_np = df_picks['P_prob'][df_picks['P_inrange']]
+    s_prob_np = df_picks['S_prob'][df_picks['S_inrange']]
+
+    p_hist = np.histogram(p_res_np, bins='auto')
+    p_hist_dist = stats.rv_histogram(p_hist)
+
+    s_hist = np.histogram(s_res_np, bins='auto')
+    s_hist_dist = stats.rv_histogram(s_hist)
+
+    px = np.linspace(0, method[1], len(p_res_np))
+    sx = np.linspace(0, method[1], len(s_res_np))
+
+    p_slope, p_intercept, pr_value, pp_value, p_std_err = stats.linregress(p_res_np, p_prob_np)
+    s_slope, s_intercept, sr_value, sp_value, s_std_err = stats.linregress(s_res_np, s_prob_np)
+
+    plt.close()
+    fig = plt.figure(constrained_layout=False)
+    fig.suptitle('Scatterplot of P & S Residuals by PhaseNet Probability')
+
+    if option == 'boxplot':
+        gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.3, left=0.1, right=0.95)
+        gs2 = fig.add_gridspec(ncols=1, nrows=2, top=0.22, bottom=0.02, left=0.1, right=0.95, hspace=0.02)
+
+        ax1 = plt.subplot(gs1[0], xlim=(0, method[1]), ylim=(0, 1))
+        ax1.grid(axis='both', alpha=0.4)
+        ax1.set(ylabel='PhaseNet probability*', xlabel='abs(Residual time) (s)')
+
+        pl, = ax1.plot(px, p_intercept + p_slope * px, color='#333333', linestyle='dashdot', lw=2.4,
+                       label="y=%.2fx+%.2f" % (p_slope, p_intercept))
+        sl, = ax1.plot(sx, s_intercept + s_slope * sx, color='#333333', linestyle='dotted', lw=2.65,
+                       label="y=%.2fx+%.2f" % (s_slope, s_intercept))
+        pscat = ax1.scatter(p_res_np, p_prob_np)
+        pscat.set_label('P')
+        sscat = ax1.scatter(s_res_np, s_prob_np)
+        sscat.set_label('S')
+        leg = ax1.legend([pscat, pl, sscat, sl],
+                         ['P', "y=%.2fx+%.2f" % (p_slope, p_intercept), 'S', "y=%.2fx+%.2f" % (s_slope, s_intercept)],
+                         loc='upper right')
+        leg.get_frame().set_edgecolor('#262626')
+
+        ax2 = plt.subplot(gs2[0], frame_on=False, xlim=(0, method[1]))
+        ax2.tick_params(axis=u'both', which=u'both', length=0)
+        plt.setp(ax2.get_xticklabels(), visible=False)
+        plt.setp(ax2.get_yticklabels(), visible=False)
+        ax2.boxplot(p_res_np, vert=False, whis=(0, 100), patch_artist=True,
+                    boxprops=dict(facecolor='#1f77b4', color='k'),
+                    medianprops=dict(color='k'),
+                    )
+
+        ax3 = plt.subplot(gs2[1], frame_on=False, xlim=(0, method[1]))
+        ax3.tick_params(axis=u'both', which=u'both', length=0)
+        plt.setp(ax3.get_xticklabels(), visible=False)
+        plt.setp(ax3.get_yticklabels(), visible=False)
+        ax3.boxplot(s_res_np, vert=False, whis=(0, 100), patch_artist=True,
+                    boxprops=dict(facecolor='#ff7f0e', color='k'),
+                    medianprops=dict(color='k'),
+                    )
+    elif option == 'PDF':
+        gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.33, left=0.1, right=0.95)
+        gs2 = fig.add_gridspec(ncols=1, nrows=1, top=0.22, bottom=0.02, left=0.1, right=0.95)
+
+        ax1 = plt.subplot(gs1[0], xlim=(0, method[1]), ylim=(0, 1))
+        ax1.grid(axis='both', alpha=0.4)
+        ax1.set(ylabel='PhaseNet probability*', xlabel='abs(Residual time) (s)')
+
+        pl, = ax1.plot(px, p_intercept + p_slope * px, color='#333333', linestyle='dashdot', lw=2.4,
+                       label="y=%.2fx+%.2f" % (p_slope, p_intercept))
+        sl, = ax1.plot(sx, s_intercept + s_slope * sx, color='#333333', linestyle='dotted', lw=2.65,
+                       label="y=%.2fx+%.2f" % (s_slope, s_intercept))
+        pscat = ax1.scatter(p_res_np, p_prob_np)
+        pscat.set_label('P')
+        sscat = ax1.scatter(s_res_np, s_prob_np)
+        sscat.set_label('S')
+        leg = ax1.legend([pscat, pl, sscat, sl],
+                         ['P', "y=%.2fx+%.2f" % (p_slope, p_intercept), 'S', "y=%.2fx+%.2f" % (s_slope, s_intercept)],
+                         loc='upper right')
+        leg.get_frame().set_edgecolor('#262626')
+
+        ax2 = plt.subplot(gs2[0], xlim=(0, method[1]))
+        ax2.plot(px, p_hist_dist.pdf(px), linewidth=2.5, label='P PDF')
+        ax2.plot(sx, s_hist_dist.pdf(sx), linewidth=2.5, label='S PDF')
+        ax2.tick_params(axis=u'both', which=u'both', length=0)
+        plt.setp(ax2.get_xticklabels(), visible=False)
+        plt.setp(ax2.get_yticklabels(), visible=False)
+    else:
+        print("Invalid option arg: ('boxplot', 'PDF')")
+
+    # fc = colors.to_rgba('lightgrey')
+    # ec = colors.to_rgba('black')
+    # fc = fc[:-1] + (0.7,)
+    # plt.annotate("y=%.3fx+%.3f" % (p_slope, p_intercept), xy=(.715, .99), xytext=(12, -12), va='top',
+    #              xycoords='axes fraction', textcoords='offset points',
+    #              bbox=dict(facecolor=fc, edgecolor=ec, boxstyle='square,pad=.6'))
+
+    # plt.annotate('*method={}: {} '.format(method, Methods[method[0]]), (0, 0), (0, -40),
+    #              xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
+    # plt.annotate('{} total arrivals removed, {} outliers removed'
+    #              .format(2 * len(df_picks) - len(p_res_np) - len(s_res_np), len(p_out) + len(s_out)), (0, 0), (0, -50),
+    #              xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
+
+    plt.savefig(os.path.join(plot_path, 'scatter.png'))
+
+    print("P:   y=%.6fx+(%.6f)" % (p_slope, p_intercept))
+    print("S:   y=%.6fx+(%.6f)" % (s_slope, s_intercept))
+    plt.show()
+    plt.close()
+
+
+scatterPlot(df_picks, plot_path, 'PDF', outlier_method)
+
+
+# %%
+
+
+# %%
+def vpsPlot(df_picks, samples, delta, option, plot_path):
+    itp = df_picks['itp'][df_picks['vps_inrange']] * delta
+    its = df_picks['its'][df_picks['vps_inrange']] * delta
+    vps = df_picks['vps'][df_picks['vps_inrange']]
+
+    plt.close()
+
+    fig = plt.figure()
+    fig.suptitle('PhaseNet VP/VS ratios')
+
+    x = np.linspace(0, (samples + 100) * delta, len(vps))
+
+    if option == 'boxplot':
+        gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.2, left=0.13, right=0.95)
+        gs2 = fig.add_gridspec(ncols=1, nrows=1, top=0.15, bottom=0.02, left=0.1, right=0.95)
+
+        ax1 = plt.subplot(gs1[0], xlim=(0, (samples + 100) * delta), ylim=(0, (samples + 100) * delta))
+        ax1.grid(axis='both', alpha=0.4)
+        ax1.set(ylabel='S arrival (s)', xlabel='P arrival (s)')
+
+        mean_l, = ax1.plot(x, np.mean(vps) * x, color='#333333', linestyle='dashdot', lw=2.4)
+        # med_l, = ax1.plot(x, np.median(vps) * x, color='#333333', linestyle=':', lw=2.4)
+
+        slope, intercept, r_value, p_value, std_err = stats.linregress(itp.astype('float32'), its.astype('float32'))
+        fit_l, = ax1.plot(x, intercept + slope * x, color='#333333', linestyle=':', lw=2.4)
+
+        ax1.scatter(itp, its, c='#d62728')
+        leg = ax1.legend([mean_l, fit_l],
+                         ["mean: y=%.2fx+%.0f" % (np.mean(vps), 0), "reg fit: y=%.2fx+%.0f" % (slope, intercept)],
+                         loc='upper left')
+        leg.get_frame().set_edgecolor('#262626')
+
+        ax2 = plt.subplot(gs2[0], frame_on=False, xlim=(0, (samples + 100) * delta))
+        ax2.tick_params(axis=u'both', which=u'both', length=0)
+        plt.setp(ax2.get_xticklabels(), visible=False)
+        plt.setp(ax2.get_yticklabels(), visible=False)
+
+        ax2.boxplot(itp, vert=False, whis=(0, 100), patch_artist=True,
+                    boxprops=dict(facecolor='#d62728', color='k'),
+                    medianprops=dict(color='k'),
+                    )
+    elif option == 'PDF':
+        p_hist = np.histogram(itp, bins='auto')
+        p_hist_dist = stats.rv_histogram(p_hist)
+
+        s_hist = np.histogram(its, bins='auto')
+        s_hist_dist = stats.rv_histogram(s_hist)
+
+        gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.33, left=0.1, right=0.95)
+        gs2 = fig.add_gridspec(ncols=1, nrows=1, top=0.22, bottom=0.02, left=0.1, right=0.95)
+
+        ax1 = plt.subplot(gs1[0], xlim=(0, (samples + 100) * delta), ylim=(0, (samples + 100) * delta))
+        ax1.grid(axis='both', alpha=0.4)
+        ax1.set(ylabel='S arrival (s)', xlabel='P arrival (s)')
+
+        mean_l, = ax1.plot(x, np.mean(vps) * x, color='#333333', linestyle='dashdot', lw=2.4)
+        # med_l, = ax1.plot(x, np.median(vps) * x, color='#333333', linestyle=':', lw=2.4)
+
+        slope, intercept, r_value, p_value, std_err = stats.linregress(itp.astype('float32'), its.astype('float32'))
+        fit_l, = ax1.plot(x, intercept + slope * x, color='#333333', linestyle=':', lw=2.4)
+
+        ax1.scatter(itp, its, c='#d62728')
+        leg = ax1.legend([mean_l, fit_l],
+                         ["mean: y=%.2fx+%.0f" % (np.mean(vps), 0), "reg fit: y=%.2fx+%.0f" % (slope, intercept)],
+                         loc='upper left')
+        leg.get_frame().set_edgecolor('#262626')
+
+        ax2 = plt.subplot(gs2[0], xlim=(0, (samples + 100) * delta))
+        ax2.tick_params(axis=u'both', which=u'both', length=0)
+        plt.setp(ax2.get_xticklabels(), visible=False)
+        plt.setp(ax2.get_yticklabels(), visible=False)
+
+        ax2.plot(x, p_hist_dist.pdf(x), linewidth=2.5, label='P PDF')
+        ax2.plot(x, s_hist_dist.pdf(x), linewidth=2.5, label='S PDF')
+    else:
+        print("Invalid option arg: ('boxplot', 'PDF')")
+
+    plt.savefig(os.path.join(plot_path, 'vps.png'))
+    plt.show()
+    plt.close()
+
+
+vpsPlot(df_picks, n_samp, dt, 'PDF', plot_path)
+# %%
+
+# %%
+def wadati(df_picks, samples, delta, savepath):
+    itp = df_picks['itp'][df_picks['vps_inrange']] * delta
+    its = df_picks['its'][df_picks['vps_inrange']] * delta
+    vps = (its-itp)/itp
+
+    plt.close()
+
+    fig = plt.figure()
+    fig.suptitle('Wadati Plot')
+
+    gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.2, left=0.13, right=0.95)
+    gs2 = fig.add_gridspec(ncols=1, nrows=1, top=0.15, bottom=0.02, left=0.1, right=0.95)
+
+    ax1 = plt.subplot(gs1[0], xlim=(0, (samples + 100) * delta), ylim=(0, (samples + 100) * delta))
+    ax1.grid(axis='both', alpha=0.4)
+    ax1.set(ylabel='S arrival (s)', xlabel='P arrival (s)')
+
+    # x = np.linspace(0, (samples + 100) * delta, len(vps))
+    # mean_l, = ax1.plot(x, np.mean(vps) * x, color='#333333', linestyle='dashdot', lw=2.4)
+    # # med_l, = ax1.plot(x, np.median(vps) * x, color='#333333', linestyle=':', lw=2.4)
+    #
+    # slope, intercept, r_value, p_value, std_err = stats.linregress(itp.astype('float32'), its.astype('float32'))
+    # fit_l, = ax1.plot(x, intercept + slope * x, color='#333333', linestyle=':', lw=2.4)
+    #
+    ax1.scatter(its-itp, its, c='#d62728')
+    # leg = ax1.legend([mean_l, fit_l],
+    #                  ["mean: y=%.2fx+%.0f" % (np.mean(vps), 0), "reg fit: y=%.2fx+%.0f" % (slope, intercept)],
+    #                  loc='upper left')
+    # leg.get_frame().set_edgecolor('#262626')
+
+    ax2 = plt.subplot(gs2[0], frame_on=False, xlim=(0, (samples + 100) * delta))
+    ax2.tick_params(axis=u'both', which=u'both', length=0)
+    plt.setp(ax2.get_xticklabels(), visible=False)
+    plt.setp(ax2.get_yticklabels(), visible=False)
+    ax2.boxplot(itp, vert=False, whis=(0, 100), patch_artist=True,
+                boxprops=dict(facecolor='#d62728', color='k'),
+                medianprops=dict(color='k'),
+                )
+
+    plt.savefig(os.path.join(plot_path, 'wadati.png'))
+    plt.show()
+    plt.close()
+
+
+wadati(df_picks, n_samp, dt, plot_path)
+
+# %%
+
