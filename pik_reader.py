@@ -19,9 +19,8 @@ from scipy import stats
 
 record = False
 
-PN_pick_method = ['min_res']
+PN_pick_method = ['max_prob']
 outlier_method = ['over', 2]
-# vps_method = ['range', 0, 500]
 vps_method = ['outlier']
 
 tbegin = -30  # starttime is 30 seconds prior to origin of earthquake
@@ -29,20 +28,14 @@ tend = 100  # end time is 240 seconds after origin of earthquake
 dt = 0.01
 n_samp = int((tend - tbegin) / dt + 1)
 
-p_threshold = 0.05
-s_threshold = 0.05
-
-# vp = 6500 # m/s
-# vs =
+p_threshold = 0.50
+s_threshold = 0.10
 
 dataset_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset'
 outlier_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/Outliers'
 output_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/PhaseNet/output'
 arrival_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/Arrival.pickle'
 plot_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/Plots'
-
-headers = ['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end', 'P_residual', 'P_time',
-           'P_phasenet', 'tp_prob', 'itp', 'S_residual', 'S_time', 'S_phasenet', 'ts_prob', 'its', 'fname']
 
 # METHODS:
 # earliest -- Uses PhaseNet's earliest pick as the arrival pick
@@ -57,7 +50,6 @@ methods = {
     "over": 'outliers over a limit excluded',
     "range": 'vps ratios in range'
 }
-
 
 def initFrames(dataset_path, output_path, arrival_path):
     print("Initializing dataframes...")
@@ -174,6 +166,9 @@ def resCalculator(df):
 
 
 df = resCalculator(df)
+
+headers = ['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end', 'P_residual', 'P_time',
+           'P_phasenet', 'tp_prob', 'itp', 'S_residual', 'S_time', 'S_phasenet', 'ts_prob', 'its', 'fname']
 df = df[headers].sort_values(['event_id', 'station'])
 df.to_pickle(os.path.join(dataset_path, "data_log_merged.pickle"))
 df.to_csv(os.path.join(dataset_path, "data_log_merged.csv"), index=False)
@@ -182,7 +177,7 @@ print("Success! Merged dataframe being saved to ", dataset_path)
 print("=================================================================================")
 
 
-def picker(df, method, savepath):
+def picker(df, p_thresh, s_thresh, method, savepath):
     print("Initializing pick algorithm... (method = {})".format(method))
     fname = []
     vps = []
@@ -395,21 +390,23 @@ def picker(df, method, savepath):
         "itp": itp,
         "its": its,
         "vps": vps,
+        "P_thresh": [p_thresh] * len(df),
+        "S_thresh": [s_thresh] * len(df),
         "pick_method": [method] * len(df),
         "fname": fname
     }
 
-    df_picks = pd.DataFrame(pick_dict, columns=['P_phasenet', 'P_res', 'P_prob', 'itp',
-                                                'S_phasenet', 'S_res', 'S_prob', 'its',
+    df_picks = pd.DataFrame(pick_dict, columns=['P_phasenet', 'P_res', 'P_prob', 'itp', 'P_thresh',
+                                                'S_phasenet', 'S_res', 'S_prob', 'its', 'S_thresh',
                                                 'vps', 'pick_method', 'fname'])
-    df_picks['itp'] = df_picks['itp'].astype('Int64')
-    df_picks['its'] = df_picks['its'].astype('Int64')
+    # df_picks['itp'] = df_picks['itp'].astype('Int64')
+    # df_picks['its'] = df_picks['its'].astype('Int64')
 
     df_picks = pd.merge(df_picks, df[['event_id', 'network', 'station', 'P_time', 'S_time', 'fname']], how='left',
                         on='fname')
     df_picks = df_picks[
-        ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp",
-         "S_time", "S_phasenet", "S_res", "S_prob", "its",
+        ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_thresh",
+         "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_thresh",
          "vps", "pick_method", "fname"]].sort_values(['event_id', 'station'])
 
     df_picks.to_pickle(os.path.join(savepath, "filter_picks.pickle"))
@@ -419,7 +416,7 @@ def picker(df, method, savepath):
     return df_picks, p_empty_count, s_empty_count
 
 
-df_picks, p_empty_count, s_empty_count = picker(df, PN_pick_method[0], outlier_path)
+df_picks, p_empty_count, s_empty_count = picker(df, p_threshold, s_threshold, PN_pick_method[0], outlier_path)
 
 # def csvSync(dataset, output, arrival, sorted_headers, method):
 #     log = pd.read_csv(os.path.join(dataset, 'data_log.csv'))
@@ -657,8 +654,8 @@ def outliers(df_picks, method, savepath):
     s_outliers.to_csv(os.path.join(savepath, "s_outliers.csv"), index=False)
 
     df_picks = df_picks[
-        ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange",
-         "S_time", "S_phasenet", "S_res", "S_prob", "S_inrange", "its",
+        ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange", "P_thresh",
+         "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange",  "S_thresh",
          "vps", "pick_method", "ol_method", "fname"]]
 
     df_picks.to_pickle(os.path.join(savepath, "filter_picks.pickle"))
@@ -702,8 +699,8 @@ def vpsOutliers(df_picks, p_out, s_out, method, savepath):
     vps_outliers.to_csv(os.path.join(savepath, "vps_outliers.csv"), index=False)
 
     df_picks = df_picks[
-        ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange",
-         "S_time", "S_phasenet", "S_res", "S_prob", "S_inrange", "its",
+        ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange", "P_thresh",
+         "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange", "S_thresh",
          "vps", "vps_inrange", "pick_method", "ol_method", "vps_ol_method", "fname"]]
 
     print("VPS outliers isolated and saved to ", savepath)
