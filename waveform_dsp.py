@@ -13,9 +13,6 @@ tend = 100  # end time is 240 seconds after origin of earthquake
 dt = 0.01
 n_samp = int((tend - tbegin) / dt + 1)
 
-p_threshold = 0.50
-s_threshold = 0.10
-
 channels = ['E', 'N', 'Z']
 
 sac_source = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/'
@@ -56,10 +53,17 @@ def initFrames(dataset_path, output_path, arrival_path):
 log, picks, arrivals, df, df_picks, p_outliers, s_outliers, vps_outliers = \
     initFrames(dataset_path, output_path, arrival_path)
 
-fnames = df_picks['fname'][0:20]
+fnames = df_picks['fname']
+# fnames = 'NZ_WACZ_EH_2020p246942_13001'
 
 
-def superPlotter5000(fnames, df, df_picks, p_thresh, s_thresh, t_window, focus, sac_path, output_path):
+def superPlotter5000(fnames, df, df_picks, t_window, focus, sac_path, output_path):
+    if type(fnames) == str:
+        if not fnames.endswith('.npz'):
+            fnames = [fnames+'.npz']
+        else:
+            fnames = [fnames]
+
     for f in fnames:
         row = df.loc[df['fname'] == f]
         i = row.index[0]
@@ -193,22 +197,28 @@ def superPlotter5000(fnames, df, df_picks, p_thresh, s_thresh, t_window, focus, 
 
         for j in range(len(df['itp'][i])):
             if j == 0:
-                plt.plot([df['itp'][i][j] * delta, df['itp'][i][j] * delta], [tmp_min, tmp_max], '--b', linewidth=1.5)
+                plt.plot([df['itp'][i][j] * delta, df['itp'][i][j] * delta], [tmp_min, tmp_max],
+                         '--', c='#1f77b4', linewidth=1.5)
             else:
-                plt.plot([df['itp'][i][j] * delta, df['itp'][i][j] * delta], [tmp_min, tmp_max], '--b', linewidth=1.5)
+                plt.plot([df['itp'][i][j] * delta, df['itp'][i][j] * delta], [tmp_min, tmp_max],
+                         '--', c='#1f77b4', linewidth=1.5)
         for j in range(len(df['its'][i])):
             if j == 0:
-                plt.plot([df['its'][i][j] * delta, df['its'][i][j] * delta], [tmp_min, tmp_max], '--r', linewidth=1.5)
+                plt.plot([df['its'][i][j] * delta, df['its'][i][j] * delta], [tmp_min, tmp_max],
+                         '--', c='#ff7f0e', linewidth=1.5)
             else:
-                plt.plot([df['its'][i][j] * delta, df['its'][i][j] * delta], [tmp_min, tmp_max], '--r', linewidth=1.5)
+                plt.plot([df['its'][i][j] * delta, df['its'][i][j] * delta], [tmp_min, tmp_max],
+                         '--', c='#ff7f0e', linewidth=1.5)
 
         if not np.isnan(df_picks['itp'][i]):
-            plt.plot([df_picks['itp'][i] * delta, df_picks['itp'][i] * delta], [tmp_min, tmp_max], 'b', linewidth=1.5)
+            plt.plot([df_picks['itp'][i] * delta, df_picks['itp'][i] * delta], [tmp_min, tmp_max],
+                     c='#1f77b4', linewidth=1.5)
         if not np.isnan(df_picks['its'][i]):
-            plt.plot([df_picks['its'][i] * delta, df_picks['its'][i] * delta], [tmp_min, tmp_max], 'r', linewidth=1.5)
+            plt.plot([df_picks['its'][i] * delta, df_picks['its'][i] * delta], [tmp_min, tmp_max],
+                     c='#ff7f0e', linewidth=1.5)
 
-        plt.plot([P_itp * delta, P_itp * delta], [tmp_min, tmp_max], linewidth=1.5)
-        plt.plot([S_itp * delta, S_itp * delta], [tmp_min, tmp_max], linewidth=1.5)
+        plt.plot([P_itp * delta, P_itp * delta], [tmp_min, tmp_max], c='slategray', linewidth=1.5)
+        plt.plot([S_itp * delta, S_itp * delta], [tmp_min, tmp_max], c='r', linewidth=1.5)
 
         plt.ylabel('Amplitude')
         plt.legend(loc='upper right', fontsize='small')
@@ -225,22 +235,28 @@ def superPlotter5000(fnames, df, df_picks, p_thresh, s_thresh, t_window, focus, 
 
         for j in range(len(df['itp'][i])):
             if j == 0:
-                plt.plot([df['itp'][i][j] * delta, df['itp'][i][j] * delta], [tmp_min, tmp_max], '--b', linewidth=1.5)
+                plt.plot([df['itp'][i][j] * delta, df['itp'][i][j] * delta], [tmp_min, tmp_max],
+                         '--', c='#1f77b4', linewidth=1.5)
             else:
-                plt.plot([df['itp'][i][j] * delta, df['itp'][i][j] * delta], [tmp_min, tmp_max], '--b', linewidth=1.5)
+                plt.plot([df['itp'][i][j] * delta, df['itp'][i][j] * delta], [tmp_min, tmp_max],
+                         '--', c='#1f77b4', linewidth=1.5)
         for j in range(len(df['its'][i])):
             if j == 0:
-                plt.plot([df['its'][i][j] * delta, df['its'][i][j] * delta], [tmp_min, tmp_max], '--r', linewidth=1.5)
+                plt.plot([df['its'][i][j] * delta, df['its'][i][j] * delta], [tmp_min, tmp_max],
+                         '--', c='#ff7f0e', linewidth=1.5)
             else:
-                plt.plot([df['its'][i][j] * delta, df['its'][i][j] * delta], [tmp_min, tmp_max], '--r', linewidth=1.5)
+                plt.plot([df['its'][i][j] * delta, df['its'][i][j] * delta], [tmp_min, tmp_max],
+                         '--', c='#ff7f0e', linewidth=1.5)
 
         if not np.isnan(df_picks['itp'][i]):
-            plt.plot([df_picks['itp'][i] * delta, df_picks['itp'][i] * delta], [tmp_min, tmp_max], 'b', linewidth=1.5)
+            plt.plot([df_picks['itp'][i] * delta, df_picks['itp'][i] * delta], [tmp_min, tmp_max],
+                     c='#1f77b4', linewidth=1.5)
         if not np.isnan(df_picks['its'][i]):
-            plt.plot([df_picks['its'][i] * delta, df_picks['its'][i] * delta], [tmp_min, tmp_max], 'r', linewidth=1.5)
+            plt.plot([df_picks['its'][i] * delta, df_picks['its'][i] * delta], [tmp_min, tmp_max],
+                     c='#ff7f0e', linewidth=1.5)
 
-        plt.plot([P_itp * delta, P_itp * delta], [tmp_min, tmp_max], linewidth=1.5)
-        plt.plot([S_itp * delta, S_itp * delta], [tmp_min, tmp_max], linewidth=1.5)
+        plt.plot([P_itp * delta, P_itp * delta], [tmp_min, tmp_max], c='slategray', linewidth=1.5)
+        plt.plot([S_itp * delta, S_itp * delta], [tmp_min, tmp_max], c='r', linewidth=1.5)
 
         plt.ylabel('Amplitude')
         plt.legend(loc='upper right', fontsize='small')
@@ -257,26 +273,28 @@ def superPlotter5000(fnames, df, df_picks, p_thresh, s_thresh, t_window, focus, 
 
         for j in range(len(df['itp'][i])):
             if j == 0:
-                plt.plot([df['itp'][i][j] * delta, df['itp'][i][j] * delta],
-                         [tmp_min, tmp_max], '--b', linewidth=1.5)
+                plt.plot([df['itp'][i][j] * delta, df['itp'][i][j] * delta], [tmp_min, tmp_max],
+                         '--', c='#1f77b4', linewidth=1.5)
             else:
-                plt.plot([df['itp'][i][j] * delta, df['itp'][i][j] * delta],
-                         [tmp_min, tmp_max], '--b', linewidth=1.5)
+                plt.plot([df['itp'][i][j] * delta, df['itp'][i][j] * delta], [tmp_min, tmp_max],
+                         '--', c='#1f77b4', linewidth=1.5)
         for j in range(len(df['its'][i])):
             if j == 0:
-                plt.plot([df['its'][i][j] * delta, df['its'][i][j] * delta],
-                         [tmp_min, tmp_max], '--r', linewidth=1.5)
+                plt.plot([df['its'][i][j] * delta, df['its'][i][j] * delta], [tmp_min, tmp_max],
+                         '--', c='#ff7f0e', linewidth=1.5)
             else:
-                plt.plot([df['its'][i][j] * delta, df['its'][i][j] * delta],
-                         [tmp_min, tmp_max], '--r', linewidth=1.5)
+                plt.plot([df['its'][i][j] * delta, df['its'][i][j] * delta], [tmp_min, tmp_max],
+                         '--', c='#ff7f0e', linewidth=1.5)
 
         if not np.isnan(df_picks['itp'][i]):
-            plt.plot([df_picks['itp'][i] * delta, df_picks['itp'][i] * delta], [tmp_min, tmp_max], 'b', linewidth=1.5)
+            plt.plot([df_picks['itp'][i] * delta, df_picks['itp'][i] * delta], [tmp_min, tmp_max],
+                     c='#1f77b4', linewidth=1.5)
         if not np.isnan(df_picks['its'][i]):
-            plt.plot([df_picks['its'][i] * delta, df_picks['its'][i] * delta], [tmp_min, tmp_max], 'r', linewidth=1.5)
+            plt.plot([df_picks['its'][i] * delta, df_picks['its'][i] * delta], [tmp_min, tmp_max],
+                     c='#ff7f0e', linewidth=1.5)
 
-        plt.plot([P_itp * delta, P_itp * delta], [tmp_min, tmp_max], linewidth=1.5)
-        plt.plot([S_itp * delta, S_itp * delta], [tmp_min, tmp_max], linewidth=1.5)
+        plt.plot([P_itp * delta, P_itp * delta], [tmp_min, tmp_max], c='slategray', linewidth=1.5)
+        plt.plot([S_itp * delta, S_itp * delta], [tmp_min, tmp_max], c='r', linewidth=1.5)
 
         plt.ylabel('Amplitude')
         plt.legend(loc='upper right', fontsize='small')
@@ -291,29 +309,29 @@ def superPlotter5000(fnames, df, df_picks, p_thresh, s_thresh, t_window, focus, 
 
         for j in range(len(df['itp'][i])):
             if j == 0:
-                plt.plot([df['itp'][i][j] * delta, df['itp'][i][j] * delta],
-                         [0, 1], '--b', linewidth=1.5)
+                plt.plot([df['itp'][i][j] * delta, df['itp'][i][j] * delta], [0, 1],
+                         '--', c='#1f77b4', linewidth=1.5)
             else:
-                plt.plot([df['itp'][i][j] * delta, df['itp'][i][j] * delta],
-                         [0, 1], '--b', linewidth=1.5)
+                plt.plot([df['itp'][i][j] * delta, df['itp'][i][j] * delta], [0, 1],
+                         '--', c='#1f77b4', linewidth=1.5)
         for j in range(len(df['its'][i])):
             if j == 0:
-                plt.plot([df['its'][i][j] * delta, df['its'][i][j] * delta],
-                         [0, 1], '--r', linewidth=1.5)
+                plt.plot([df['its'][i][j] * delta, df['its'][i][j] * delta], [0, 1],
+                         '--', c='#ff7f0e', linewidth=1.5)
             else:
-                plt.plot([df['its'][i][j] * delta, df['its'][i][j] * delta],
-                         [0, 1], '--r', linewidth=1.5)
+                plt.plot([df['its'][i][j] * delta, df['its'][i][j] * delta], [0, 1],
+                         '--', c='#ff7f0e', linewidth=1.5)
 
         if not np.isnan(df_picks['itp'][i]):
-            plt.plot([df_picks['itp'][i] * delta, df_picks['itp'][i] * delta], [0, 1], 'b', linewidth=1.5)
+            plt.plot([df_picks['itp'][i] * delta, df_picks['itp'][i] * delta], [0, 1], '#1f77b4', linewidth=1.5)
         if not np.isnan(df_picks['its'][i]):
-            plt.plot([df_picks['its'][i] * delta, df_picks['its'][i] * delta], [0, 1], 'r', linewidth=1.5)
+            plt.plot([df_picks['its'][i] * delta, df_picks['its'][i] * delta], [0, 1], c='#ff7f0e', linewidth=1.5)
 
-        plt.plot([P_itp * delta, P_itp * delta], [0, 1], linewidth=1.5)
-        plt.plot([S_itp * delta, S_itp * delta], [0, 1], linewidth=1.5)
+        plt.plot([P_itp * delta, P_itp * delta], [0, 1], c='slategray', linewidth=1.5)
+        plt.plot([S_itp * delta, S_itp * delta], [0, 1], c='r', linewidth=1.5)
 
-        plt.plot(times[start:end], [p_thresh] * len(times[start:end]), '--', linewidth=0.5)
-        plt.plot(times[start:end], [s_thresh] * len(times[start:end]), '--', linewidth=0.5)
+        plt.plot(times[start:end], [df_picks['P_thresh'][i]] * len(times[start:end]), ':', linewidth=0.25)
+        plt.plot(times[start:end], [df_picks['S_thresh'][i]] * len(times[start:end]), ':', linewidth=0.25)
 
         plt.ylim([-0.05, 1.05])
         plt.text(text_loc[0], text_loc[1], '(iv)', horizontalalignment='center',
@@ -323,11 +341,15 @@ def superPlotter5000(fnames, df, df_picks, p_thresh, s_thresh, t_window, focus, 
         plt.ylabel('Probability')
 
         plt.text(0.02, 0.02, "fname: {}".format(f), fontsize=10, transform=plt.gcf().transFigure)
+        plt.text(0.6, 0.02, "| P-res = {}   |   S-res = {} |".
+                 format(round(df_picks['P_res'][i], 2), round(df_picks['S_res'][i]), 2),
+                 fontsize=10, transform=plt.gcf().transFigure)
 
         plt.tight_layout()
         plt.gcf().align_labels()
 
+        plt.savefig(os.path.join('/Volumes/WMEL/Kaikoura Plots', os.path.splitext(f)[0]+'.png'))
         plt.show()
 
 
-count = superPlotter5000(fnames, df, df_picks, p_threshold, s_threshold, 5, 'S_phasenet', sac_source, output_path)
+superPlotter5000(fnames, df, df_picks, 5, 'S_phasenet', sac_source, output_path)
