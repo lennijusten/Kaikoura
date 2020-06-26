@@ -17,8 +17,10 @@ import csv
 import pandas as pd
 import shlex
 
-# ACTUAL
-# todo mark waveform.csv and NPZ directory with event ID. Load in pickles
+# FILTER PARAMS
+filter_method = "bandpass"
+freq_min = 1.0
+freq_max = 20.0
 
 # source can be a single event folder or a folder of event folders
 sac_source = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/'
@@ -27,7 +29,7 @@ chan_list = ['EH?', 'BH?']  # add channels in three letter format. Script will l
 directions = ['N', 'E', 'Z']
 
 tbegin = -30  # starttime is 30 seconds prior to origin of earthquake
-tend = 240  # end time is 240 seconds after origin of earthquake
+tend = 100  # end time is 240 seconds after origin of earthquake
 dt = 0.01
 n_samp = int((tend - tbegin) / dt + 1)
 
@@ -311,8 +313,8 @@ for event in events:
                     delta = [st[0].stats.delta, st[1].stats.delta, st[2].stats.delta]
 
                     if (st_filtered_channel[0].data.size, st_filtered_channel[1].data.size) == (
-                            st_filtered_channel[1].data.size, st_filtered_channel[2].data.size) and st_filtered_channel[
-                        0].data.size == n_samp:
+                            st_filtered_channel[1].data.size, st_filtered_channel[2].data.size) and \
+                            st_filtered_channel[0].data.size == n_samp:
                         samp_len = True
                     else:
                         samp_len = False
@@ -322,7 +324,12 @@ for event in events:
                             set_count += 1
                             rows = st_filtered_channel[0].data.size
                             data_log = np.empty((rows, 0), dtype='float32')
-                            for tr2 in st_filtered_channel:
+
+                            # ------- FILTER METHOD ---------- #
+                            st_final = st_filtered_channel.filter(filter_method, freqmin=freq_min, freqmax=freq_max)
+                            filter_descrip = [filter_method, freq_min, freq_max]
+
+                            for tr2 in st_final:
                                 trace_data = np.reshape(tr2.data, (-1, 1))
                                 data_log = np.append(data_log, trace_data, 1)
 
@@ -333,7 +340,7 @@ for event in events:
                             np.savez(os.path.join(npz_save_path, stream_name), data=data_log)
                             row_list.append(
                                 [net, event, sta, cha, np.size(data_log, 0), tr2.stats.delta, tr2.stats.starttime,
-                                 tr2.stats.endtime, stream_name])
+                                 tr2.stats.endtime, filter_descrip, stream_name])
 
                             print("Full set of E,N,Z found for channel [{}]. Writing to ".format(cha))
                             print(os.path.join(npz_save_path, stream_name))
@@ -372,7 +379,7 @@ for event in events:
             print("Total number of files written for station: ", set_count)
 
 df = pd.DataFrame(row_list, columns=['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end',
-                                     'fname'])
+                                     'filter_method', 'fname'])
 
 print("-------------------------------------------------------")
 print("-------------------------------------------------------")
@@ -410,4 +417,4 @@ csvWriter(npz_save_path, dataset_path)
 # cd /Users/Lenni/Documents/PycharmProjects/Kaikoura
 # python PhaseNet/run.py --mode=pred --model_dir=PhaseNet/model/190703-214543 --data_dir=Dataset/NPZ --tp_prob=0.05 --ts_prob=0.05 --data_list=Dataset/waveform.csv --output_dir=PhaseNet/output --plot_figure --save_result --batch_size=30 --input_length=27001
 
-# python PhaseNet/run.py --mode=pred --model_dir=PhaseNet/model/190703-214543 --data_dir=Dataset/NPZ --tp_prob=0.05 --ts_prob=0.05 --data_list=Dataset/waveform.csv --output_dir=PhaseNet/output --batch_size=50 --input_length=27001
+# python PhaseNet/run.py --mode=pred --model_dir=PhaseNet/model/190703-214543 --data_dir=Dataset/NPZ --tp_prob=0.05 --ts_prob=0.05 --data_list=Dataset/waveform.csv --output_dir=PhaseNet/output --save_result --batch_size=50 --input_length=13001
