@@ -11,10 +11,6 @@ import os
 import pandas as pd
 import shlex
 import matplotlib.pyplot as plt
-from matplotlib import colors
-from matplotlib import gridspec
-import itertools
-import statistics
 from scipy import stats
 
 record = False
@@ -168,7 +164,8 @@ def resCalculator(df):
 df = resCalculator(df)
 
 headers = ['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end', 'P_residual', 'P_time',
-           'P_phasenet', 'tp_prob', 'itp', 'S_residual', 'S_time', 'S_phasenet', 'ts_prob', 'its', 'fname']
+           'P_phasenet', 'tp_prob', 'itp', 'S_residual', 'S_time', 'S_phasenet', 'ts_prob', 'its',
+           'filter_method', 'fname']
 df = df[headers].sort_values(['event_id', 'station'])
 df.to_pickle(os.path.join(dataset_path, "data_log_merged.pickle"))
 df.to_csv(os.path.join(dataset_path, "data_log_merged.csv"), index=False)
@@ -402,12 +399,12 @@ def picker(df, p_thresh, s_thresh, method, savepath):
     # df_picks['itp'] = df_picks['itp'].astype('Int64')
     # df_picks['its'] = df_picks['its'].astype('Int64')
 
-    df_picks = pd.merge(df_picks, df[['event_id', 'network', 'station', 'P_time', 'S_time', 'fname']], how='left',
-                        on='fname')
+    df_picks = pd.merge(df_picks, df[['event_id', 'network', 'station', 'P_time', 'S_time', 'filter_method', 'fname']],
+                        how='left', on='fname')
     df_picks = df_picks[
         ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_thresh",
          "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_thresh",
-         "vps", "pick_method", "fname"]].sort_values(['event_id', 'station'])
+         "vps", "pick_method", "filter_method", "fname"]].sort_values(['event_id', 'station'])
 
     df_picks.to_pickle(os.path.join(savepath, "filter_picks.pickle"))
     df_picks.to_csv(os.path.join(savepath, "filter_picks.csv"), index=False)
@@ -644,9 +641,9 @@ def outliers(df_picks, method, savepath):
     s_outliers = df_picks.loc[(df_picks['S_res'].notna()) & (df_picks['S_inrange'] == False)]
 
     p_outliers = p_outliers[["event_id", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange",
-                             "pick_method", "ol_method", "fname"]]
+                             "pick_method", "ol_method", "filter_method", "fname"]]
     s_outliers = s_outliers[["event_id", "station", "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange",
-                             "pick_method", "ol_method", "fname"]]
+                             "pick_method", "ol_method", "filter_method", "fname"]]
 
     p_outliers.to_pickle(os.path.join(savepath, "p_outliers.pickle"))
     p_outliers.to_csv(os.path.join(savepath, "p_outliers.csv"), index=False)
@@ -656,7 +653,7 @@ def outliers(df_picks, method, savepath):
     df_picks = df_picks[
         ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange", "P_thresh",
          "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange",  "S_thresh",
-         "vps", "pick_method", "ol_method", "fname"]]
+         "vps", "pick_method", "ol_method", "filter_method", "fname"]]
 
     df_picks.to_pickle(os.path.join(savepath, "filter_picks.pickle"))
     df_picks.to_csv(os.path.join(savepath, "filter_picks.csv"), index=False)
@@ -693,7 +690,7 @@ def vpsOutliers(df_picks, p_out, s_out, method, savepath):
     vps_outliers = df_picks.loc[(df_picks['vps'].notna()) & (df_picks['vps_inrange'] == False)]
     vps_outliers = vps_outliers[["event_id", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange",
                                  "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange",
-                                 "vps", "vps_inrange", "pick_method", "ol_method", "fname"]]
+                                 "vps", "vps_inrange", "pick_method", "ol_method", "filter_method", "fname"]]
 
     vps_outliers.to_pickle(os.path.join(savepath, "vps_outliers.pickle"))
     vps_outliers.to_csv(os.path.join(savepath, "vps_outliers.csv"), index=False)
@@ -701,7 +698,7 @@ def vpsOutliers(df_picks, p_out, s_out, method, savepath):
     df_picks = df_picks[
         ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange", "P_thresh",
          "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange", "S_thresh",
-         "vps", "vps_inrange", "pick_method", "ol_method", "vps_ol_method", "fname"]]
+         "vps", "vps_inrange", "pick_method", "ol_method", "vps_ol_method", "filter_method", "fname"]]
 
     print("VPS outliers isolated and saved to ", savepath)
     return df_picks, vps_outliers
@@ -750,6 +747,7 @@ def summary(df_picks, pick_method, outlier_method, vps_method, p_thresh, s_thres
         print("pick method = ", pick_method, file=f)
         print("residual outlier method = ", outlier_method, file=f)
         print("vps outlier method = {}".format(vps_method), file=f)
+        print("filter method = {}".format(df_picks['filter_method'][0]), file=f)
         print("=================================================================================", file=f)
 
     print("Summary information saved to ", os.path.join(savepath, 'summary.txt'))
@@ -1020,7 +1018,7 @@ vpsPlot(df_picks, n_samp, dt, 'PDF', plot_path)
 # %%
 
 # %%
-def wadati(df_picks, samples, delta, savepath):
+def wadati(df_picks, samples, delta, option, savepath):
     itp = df_picks['itp'][df_picks['vps_inrange']] * delta
     its = df_picks['its'][df_picks['vps_inrange']] * delta
     vps = (its-itp)/itp
@@ -1031,40 +1029,52 @@ def wadati(df_picks, samples, delta, savepath):
     fig.suptitle('Wadati Plot')
 
     gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.2, left=0.13, right=0.95)
-    gs2 = fig.add_gridspec(ncols=1, nrows=1, top=0.15, bottom=0.02, left=0.1, right=0.95)
+    gs2 = fig.add_gridspec(ncols=1, nrows=1, top=0.15, bottom=0.02, left=0.13, right=0.95)
 
-    ax1 = plt.subplot(gs1[0], xlim=(0, (samples + 100) * delta), ylim=(0, (samples + 100) * delta))
+    ax1 = plt.subplot(gs1[0], xlim=(0, (samples + 100) * delta))
     ax1.grid(axis='both', alpha=0.4)
-    ax1.set(ylabel='S arrival (s)', xlabel='P arrival (s)')
+    ax1.set(ylabel='S - P time (s)', xlabel='P arrival time (s)')
 
-    # x = np.linspace(0, (samples + 100) * delta, len(vps))
-    # mean_l, = ax1.plot(x, np.mean(vps) * x, color='#333333', linestyle='dashdot', lw=2.4)
-    # # med_l, = ax1.plot(x, np.median(vps) * x, color='#333333', linestyle=':', lw=2.4)
-    #
-    # slope, intercept, r_value, p_value, std_err = stats.linregress(itp.astype('float32'), its.astype('float32'))
-    # fit_l, = ax1.plot(x, intercept + slope * x, color='#333333', linestyle=':', lw=2.4)
-    #
-    ax1.scatter(its-itp, its, c='#d62728')
-    # leg = ax1.legend([mean_l, fit_l],
-    #                  ["mean: y=%.2fx+%.0f" % (np.mean(vps), 0), "reg fit: y=%.2fx+%.0f" % (slope, intercept)],
-    #                  loc='upper left')
-    # leg.get_frame().set_edgecolor('#262626')
+    x = np.linspace(0, (samples + 100) * delta, len(vps))
+    mean_l, = ax1.plot(x, np.mean(vps) * x, color='#333333', linestyle='dashdot', lw=2.4)
+    # med_l, = ax1.plot(x, np.median(vps) * x, color='#333333', linestyle=':', lw=2.4)
 
-    ax2 = plt.subplot(gs2[0], frame_on=False, xlim=(0, (samples + 100) * delta))
-    ax2.tick_params(axis=u'both', which=u'both', length=0)
-    plt.setp(ax2.get_xticklabels(), visible=False)
-    plt.setp(ax2.get_yticklabels(), visible=False)
-    ax2.boxplot(itp, vert=False, whis=(0, 100), patch_artist=True,
-                boxprops=dict(facecolor='#d62728', color='k'),
-                medianprops=dict(color='k'),
-                )
+    slope, intercept, r_value, p_value, std_err = stats.linregress(itp, its-itp)
+    fit_l, = ax1.plot(x, intercept + slope * x, color='#333333', linestyle=':', lw=2.4)
+    #
+    ax1.scatter(itp, its-itp, c='#d62728')
+    leg = ax1.legend([mean_l, fit_l],
+                     ["mean: y=%.2fx+%.0f" % (np.mean(vps), 0), "reg fit: y=%.2fx+%.0f" % (slope, intercept)],
+                     loc='upper left')
+    leg.get_frame().set_edgecolor('#262626')
+
+    if option == 'boxplot':
+        ax2 = plt.subplot(gs2[0], frame_on=False)
+        ax2.tick_params(axis=u'both', which=u'both', length=0)
+        plt.setp(ax2.get_xticklabels(), visible=False)
+        plt.setp(ax2.get_yticklabels(), visible=False)
+        ax2.boxplot(itp, vert=False, whis=(0, 100), patch_artist=True,
+                    boxprops=dict(facecolor='#d62728', color='k'),
+                    medianprops=dict(color='k'),
+                    )
+    elif option == 'PDF':
+        ax2 = plt.subplot(gs2[0], xlim=(0, (samples + 100) * delta), frame_on=True)
+        p_hist = np.histogram(itp, bins='auto')
+        p_hist_dist = stats.rv_histogram(p_hist)
+
+        ax2.tick_params(axis=u'both', which=u'both', length=0)
+        plt.setp(ax2.get_xticklabels(), visible=False)
+        plt.setp(ax2.get_yticklabels(), visible=False)
+        ax2.plot(x, p_hist_dist.pdf(x), c='#d62728', linewidth=2.5, label='P PDF')
+    else:
+        print("Invalid option arg: ('boxplot', 'PDF')")
 
     plt.savefig(os.path.join(plot_path, 'wadati.png'))
     plt.show()
     plt.close()
 
 
-wadati(df_picks, n_samp, dt, plot_path)
+wadati(df_picks, n_samp, dt, 'PDF', plot_path)
 
 # %%
 
