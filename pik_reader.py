@@ -13,8 +13,6 @@ import shlex
 import matplotlib.pyplot as plt
 from scipy import stats
 
-record = False
-
 PN_pick_method = ['max_prob']
 outlier_method = ['over', 2]
 vps_method = ['outlier']
@@ -102,9 +100,6 @@ def thresholder(picks, p_thresh, s_thresh):
 
 picks = thresholder(picks, p_threshold, s_threshold)
 
-df = pd.merge(log, picks, how='left', on=['fname'])
-df = pd.merge(df, arrivals[["event_id", "station", "channel", "network", "P_time", "S_time"]],
-              how='left', on=['event_id', 'station', 'network', 'channel'])
 
 def timeConverter(df):
     print("Converting arrivals to UTC DateTime...")
@@ -113,8 +108,11 @@ def timeConverter(df):
     return df
 
 
-df = timeConverter(df)
+log = timeConverter(log)
 
+df = pd.merge(log, picks, how='left', on=['fname'])
+df = pd.merge(df, arrivals[["event_id", "station", "channel", "network", "P_time", "S_time"]],
+              how='left', on=['event_id', 'station', 'network', 'channel'])
 
 def pick2time(df):
     print("Converting PhaseNet picks into UTC times...")
@@ -132,7 +130,6 @@ def pick2time(df):
     df['P_phasenet'] = p_utc_picks
     df['S_phasenet'] = s_utc_picks
     return df
-
 
 df = pick2time(df)
 
@@ -415,193 +412,6 @@ def picker(df, p_thresh, s_thresh, method, savepath):
 
 df_picks, p_empty_count, s_empty_count = picker(df, p_threshold, s_threshold, PN_pick_method[0], outlier_path)
 
-# def csvSync(dataset, output, arrival, sorted_headers, method):
-#     log = pd.read_csv(os.path.join(dataset, 'data_log.csv'))
-#     picks = pd.read_csv(os.path.join(output, 'picks.csv'))
-#     arrivals = pd.read_pickle(arrival)
-#
-#     print("\nMerging picks.csv with data_log.csv...")
-#     df = pd.merge(log, picks, how='left', on=['fname'])
-#     print("Reformatting data from csv files...")
-#     for col in ['start', 'end']:
-#         df[col] = [obspy.UTCDateTime(x) for x in df[col]]
-#
-#     for col2 in ['itp', 'its']:
-#         a = []
-#         for x in range(len(df[col2])):
-#             try:
-#                 a.append(list(map(int, shlex.split(df[col2][x].strip('[]')))))
-#             except AttributeError:
-#                 a.append([])
-#                 # print("Pick sample data is already in the correct format. Passing")
-#                 pass
-#         df[col2] = a
-#
-#     for col3 in ['tp_prob', 'ts_prob']:
-#         b = []
-#         for x in range(len(df[col3])):
-#             try:
-#                 b.append(list(map(float, shlex.split(df[col3][x].strip('[]')))))
-#             except AttributeError:
-#                 b.append([])
-#                 # print("Pick probability data is already in the correct format. Passing")
-#                 pass
-#         df[col3] = b
-#
-#     utc_p_picks = []
-#     utc_s_picks = []
-#     for row in range(len(df['itp'])):
-#         p_lst = df['itp'][row]
-#         s_lst = df['its'][row]
-#         p_lst2, s_lst2 = [], []
-#         for p_element in p_lst:
-#             p_lst2.append(df['start'][row] + float(p_element) * df['delta'][row])
-#         for s_element in s_lst:
-#             s_lst2.append(df['start'][row] + float(s_element) * df['delta'][row])
-#         utc_p_picks.append(p_lst2)
-#         utc_s_picks.append(s_lst2)
-#
-#     df['p_time'] = utc_p_picks
-#     df['s_time'] = utc_s_picks
-#
-#     print("Merging with arrival.pickle...")
-#     df = pd.merge(df, arrivals[["event_id", "station", "channel", "network", "P_time", "S_time"]],
-#                   how='left', on=['event_id', 'station', 'network', 'channel'])
-#
-#     fname = []
-#     p_picks = []
-#     s_picks = []
-#     p_diffs = []
-#     p_diff = []
-#     s_diffs = []
-#     s_diff = []
-#     p_prob_list = []
-#     s_prob_list = []
-#     p_empty_count = 0
-#     s_empty_count = 0
-#
-#     for row2 in range(len(df['p_time'])):
-#         fname.append(df['fname'][row2])
-#         ptimes = df['p_time'][row2]
-#         stimes = df['s_time'][row2]
-#         pdiff_lst, sdiff_lst = [], []
-#         for pt in ptimes:
-#             try:
-#                 pdiff_lst.append(df['P_time'][row2] - pt)
-#             except TypeError:
-#                 pass
-#         p_diffs.append(pdiff_lst)
-#         for st in stimes:
-#             try:
-#                 sdiff_lst.append(df['S_time'][row2] - st)
-#             except TypeError:
-#                 pass
-#         s_diffs.append(sdiff_lst)
-#         if method == 'earliest':
-#             try:
-#                 if df['itp'][row2][0] != 1:
-#                     p_picks.append(df['p_time'][row2][0])
-#                     p_diff.append(pdiff_lst[0])
-#                     p_prob_list.append(df['tp_prob'][row2][0])
-#                     # pick = 0
-#                 else:
-#                     p_picks.append(df['p_time'][row2][1])
-#                     p_diff.append(pdiff_lst[1])
-#                     p_prob_list.append(df['tp_prob'][row2][1])
-#                     # pick = 1
-#             except IndexError:
-#                 pick = 2
-#                 p_picks.append([])
-#                 p_empty_count += 1
-#                 p_diff.append(np.nan)
-#                 p_prob_list.append(np.nan)
-#
-#             # if pick == 2:
-#             #     p_picks.append([])
-#             # else:
-#             #     p_picks.append(df['p_time'][row2][pick])
-#
-#             try:
-#                 if df['its'][row2][0] != 1:
-#                     s_diff.append(sdiff_lst[0])
-#                     s_prob_list.append(df['ts_prob'][row2][0])
-#                     pick = 0
-#                 else:
-#                     s_diff.append(sdiff_lst[1])
-#                     s_prob_list.append(df['ts_prob'][row2][1])
-#                     pick = 1
-#             except IndexError:
-#                 pick = 2
-#                 s_empty_count += 1
-#                 s_diff.append(np.nan)
-#                 s_prob_list.append(np.nan)
-#
-#             if pick == 2:
-#                 s_picks.append(np.nan)
-#             else:
-#                 s_picks.append(df['s_time'][row2][pick])
-#
-#         elif method == 'max_prob':
-#             try:
-#                 p_diff.append(pdiff_lst[df['tp_prob'][row2].index(max(df['tp_prob'][row2]))])
-#                 p_prob_list.append(max(df['tp_prob'][row2]))
-#                 p_picks.append(df['p_time'][row2][df['tp_prob'][row2].index(max(df['tp_prob'][row2]))])
-#             except ValueError:
-#                 p_empty_count += 1
-#                 p_diff.append(np.nan)
-#                 p_prob_list.append(np.nan)
-#                 p_picks.append(np.nan)
-#             except IndexError:
-#                 p_empty_count += 1
-#                 p_diff.append(np.nan)
-#                 p_prob_list.append(np.nan)
-#                 p_picks.append(np.nan)
-#             try:
-#                 s_diff.append(sdiff_lst[df['ts_prob'][row2].index(max(df['ts_prob'][row2]))])
-#                 s_prob_list.append(max(df['ts_prob'][row2]))
-#                 s_picks.append(df['s_time'][row2][df['ts_prob'][row2].index(max(df['ts_prob'][row2]))])
-#             except ValueError:
-#                 s_empty_count += 1
-#                 s_diff.append(np.nan)
-#                 s_prob_list.append(np.nan)
-#                 s_picks.append(np.nan)
-#             except IndexError:
-#                 s_empty_count += 1
-#                 s_diff.append(np.nan)
-#                 s_prob_list.append(np.nan)
-#                 s_picks.append(np.nan)
-#         else:
-#             print("Invalid method: method = (['earliest'], ['max_prob')]")
-#
-#     df['P_residual'] = p_diffs
-#     df['S_residual'] = s_diffs
-#
-#     df = df[sorted_headers].sort_values(['event_id', 'station'])
-#     df.to_pickle(os.path.join(dataset, "data_log_merged.pickle"))
-#     df.to_csv(os.path.join(dataset, "data_log_merged.csv"), index=False)
-#     print("Merge successful. Copying files to ", dataset)
-#
-#     pick_dict = {
-#         "P_phasenet": p_picks,
-#         "S_phasenet": s_picks,
-#         "P_res": p_diff,
-#         "S_res": s_diff,
-#         "P_prob": p_prob_list,
-#         "S_prob": s_prob_list,
-#         "pick_method": [method]*len(df),
-#         "fname": fname
-#     }
-#
-#     df_picks = pd.DataFrame(pick_dict, columns=['P_phasenet', 'P_res', 'P_prob',
-#                                                 'S_phasenet', 'S_res', 'S_prob', 'pick_method', 'fname'])
-#
-#     df_picks = pd.merge(df_picks, df[['event_id', 'P_time', 'S_time', 'fname']], how='left', on='fname')
-#     df_picks = df_picks[["event_id", "P_time", "P_phasenet", "P_res", "P_prob", "S_time", "S_phasenet", "S_res", "S_prob",
-#                          "pick_method", "fname"]]
-#
-#     return df, df_picks, p_empty_count, s_empty_count
-# df2, df_pick, p_empty, s_empty = csvSync(dataset_path, output_path, arrival_path, headers, PN_pick_method[0])
-
 print("=================================================================================")
 
 
@@ -709,7 +519,7 @@ df_picks, vps_out = vpsOutliers(df_picks, p_out, s_out, vps_method, outlier_path
 print("=================================================================================")
 
 
-def summary(df_picks, pick_method, outlier_method, vps_method, p_thresh, s_thresh, record, savepath):
+def summary(df_picks, pick_method, outlier_method, vps_method, p_thresh, s_thresh, savepath):
     pssr = np.nansum([i ** 2 for i in df_picks['P_res'][df_picks['P_inrange']]])
     sssr = np.nansum([i ** 2 for i in df_picks['S_res'][df_picks['S_inrange']]])
 
@@ -723,8 +533,6 @@ def summary(df_picks, pick_method, outlier_method, vps_method, p_thresh, s_thres
 
     with open(os.path.join(savepath, "summary.txt"), "a") as f:
         print("=================================================================================", file=f)
-        if record:
-            print("----- RECORD -----", file=f)
         print(datetime.datetime.now(), file=f)
 
         print("Number of arrivals = ", len(df_picks), file=f)
@@ -750,10 +558,35 @@ def summary(df_picks, pick_method, outlier_method, vps_method, p_thresh, s_thres
         print("filter method = {}".format(df_picks['filter_method'][0]), file=f)
         print("=================================================================================", file=f)
 
+        print(datetime.datetime.now())
+
+        print("Number of arrivals = ", len(df_picks))
+        print("RMS = ", rms)
+        print("Mean P residual = ", np.nanmean(df_picks['P_res'][df_picks['P_inrange']]))
+        print("Mean S residual = ", np.nanmean(df_picks['S_res'][df_picks['S_inrange']]))
+        print("---------------------------------------------------------------------------------")
+        print("P picks = {}   ({}%)".format(df_picks['P_phasenet'].count(),
+                                            (df_picks['P_phasenet'].count() / len(df_picks)) * 100))
+        print("S picks = {}   ({}%)".format(df_picks['S_phasenet'].count(),
+                                            (df_picks['S_phasenet'].count() / len(df_picks)) * 100))
+        print("P-RMS = ", prms)
+        print("S-RMS = ", srms)
+        print("P outliers excluded = {}".format(len(p_out)))
+        print("S outliers excluded = {}".format(len(s_out)))
+        print("---------------------------------------------------------------------------------")
+        print("PARAMETERS")
+        print("P threshold = ", p_thresh)
+        print("S threshold = ", s_thresh)
+        print("pick method = ", pick_method)
+        print("residual outlier method = ", outlier_method)
+        print("vps outlier method = {}".format(vps_method))
+        print("filter method = {}".format(df_picks['filter_method'][0]))
+        print("=================================================================================")
+
     print("Summary information saved to ", os.path.join(savepath, 'summary.txt'))
 
 
-summary(df_picks, PN_pick_method, outlier_method, vps_method, p_threshold, s_threshold, record, plot_path)
+summary(df_picks, PN_pick_method, outlier_method, vps_method, p_threshold, s_threshold, plot_path)
 
 
 def Histogram(df_picks, phase, p_out, s_out, vps_out, plot_path, Methods, method):
@@ -904,23 +737,10 @@ def scatterPlot(df_picks, plot_path, option, method):
     else:
         print("Invalid option arg: ('boxplot', 'PDF')")
 
-    # fc = colors.to_rgba('lightgrey')
-    # ec = colors.to_rgba('black')
-    # fc = fc[:-1] + (0.7,)
-    # plt.annotate("y=%.3fx+%.3f" % (p_slope, p_intercept), xy=(.715, .99), xytext=(12, -12), va='top',
-    #              xycoords='axes fraction', textcoords='offset points',
-    #              bbox=dict(facecolor=fc, edgecolor=ec, boxstyle='square,pad=.6'))
-
-    # plt.annotate('*method={}: {} '.format(method, Methods[method[0]]), (0, 0), (0, -40),
-    #              xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
-    # plt.annotate('{} total arrivals removed, {} outliers removed'
-    #              .format(2 * len(df_picks) - len(p_res_np) - len(s_res_np), len(p_out) + len(s_out)), (0, 0), (0, -50),
-    #              xycoords='axes fraction', textcoords='offset points', va='top', style='italic', fontsize=9)
-
     plt.savefig(os.path.join(plot_path, 'scatter.png'))
 
-    print("P:   y=%.6fx+(%.6f)" % (p_slope, p_intercept))
-    print("S:   y=%.6fx+(%.6f)" % (s_slope, s_intercept))
+    # print("P:   y=%.6fx+(%.6f)" % (p_slope, p_intercept))
+    # print("S:   y=%.6fx+(%.6f)" % (s_slope, s_intercept))
     plt.show()
     plt.close()
 
