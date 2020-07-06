@@ -45,6 +45,7 @@ methods = {
     "range": 'vps ratios in range'
 }
 
+
 def initFrames(dataset_path, output_path, arrival_path):
     print("Initializing dataframes...")
     log = pd.read_csv(os.path.join(dataset_path, 'data_log.csv'))
@@ -114,6 +115,7 @@ df = pd.merge(log, picks, how='left', on=['fname'])
 df = pd.merge(df, arrivals[["event_id", "station", "channel", "network", "P_time", "S_time"]],
               how='left', on=['event_id', 'station', 'network', 'channel'])
 
+
 def pick2time(df):
     print("Converting PhaseNet picks into UTC times...")
     p_utc_picks = []
@@ -130,6 +132,7 @@ def pick2time(df):
     df['P_phasenet'] = p_utc_picks
     df['S_phasenet'] = s_utc_picks
     return df
+
 
 df = pick2time(df)
 
@@ -462,7 +465,7 @@ def outliers(df_picks, method, savepath):
 
     df_picks = df_picks[
         ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange", "P_thresh",
-         "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange",  "S_thresh",
+         "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange", "S_thresh",
          "vps", "pick_method", "ol_method", "filter_method", "fname"]]
 
     df_picks.to_pickle(os.path.join(savepath, "filter_picks.pickle"))
@@ -519,7 +522,39 @@ df_picks, vps_out = vpsOutliers(df_picks, p_out, s_out, vps_method, outlier_path
 print("=================================================================================")
 
 
-def summary(df_picks, pick_method, outlier_method, vps_method, p_thresh, s_thresh, savepath):
+def eventParser(df_picks, savepath):
+    # Event statistics
+    event_rating = []
+
+    p_rms = []
+    np = []
+    np_out = []
+    p_mean_res = []
+    p_median_res = []
+    p_prob_mean = []
+    p_prob_std = []
+
+    s_rms = []
+    sp = []
+    sp_out = []
+    s_mean_res = []
+    s_median_res = []
+    s_prob_mean = []
+    s_prob_std = []
+
+    for event in df_picks['event_id'].unique():
+        df_temp = df_picks.loc[df_picks['event_id'] == event]
+
+        p_rms.append()
+        np = []
+        np_out = []
+        p_mean_res = []
+        p_median_res = []
+        p_prob_mean = []
+        p_prob_std = []
+
+
+def summary(df_picks, savepath):
     pssr = np.nansum([i ** 2 for i in df_picks['P_res'][df_picks['P_inrange']]])
     sssr = np.nansum([i ** 2 for i in df_picks['S_res'][df_picks['S_inrange']]])
 
@@ -540,21 +575,23 @@ def summary(df_picks, pick_method, outlier_method, vps_method, p_thresh, s_thres
         print("Mean P residual = ", np.nanmean(df_picks['P_res'][df_picks['P_inrange']]), file=f)
         print("Mean S residual = ", np.nanmean(df_picks['S_res'][df_picks['S_inrange']]), file=f)
         print("---------------------------------------------------------------------------------", file=f)
-        print("P picks = {}   ({}%)".format(df_picks['P_phasenet'].count(),
-                                            (df_picks['P_phasenet'].count()/len(df_picks))*100), file=f)
-        print("S picks = {}   ({}%)".format(df_picks['S_phasenet'].count(),
-                                            (df_picks['S_phasenet'].count()/len(df_picks))*100), file=f)
+        print("P picks = {}   ({}%)".format(df_picks['P_phasenet'][df_picks['P_inrange']].count(),
+                                            (df_picks['P_phasenet'][df_picks['P_inrange']].count() / len(
+                                                df_picks)) * 100), file=f)
+        print("S picks = {}   ({}%)".format(df_picks['S_phasenet'][df_picks['S_inrange']].count(),
+                                            (df_picks['S_phasenet'][df_picks['S_inrange']].count() / len(
+                                                df_picks)) * 100), file=f)
         print("P-RMS = ", prms, file=f)
         print("S-RMS = ", srms, file=f)
         print("P outliers excluded = {}".format(len(p_out)), file=f)
         print("S outliers excluded = {}".format(len(s_out)), file=f)
         print("---------------------------------------------------------------------------------", file=f)
         print("PARAMETERS", file=f)
-        print("P threshold = ", p_thresh, file=f)
-        print("S threshold = ", s_thresh, file=f)
-        print("pick method = ", pick_method, file=f)
-        print("residual outlier method = ", outlier_method, file=f)
-        print("vps outlier method = {}".format(vps_method), file=f)
+        print("P threshold = ", df_picks['P_thresh'][0], file=f)
+        print("S threshold = ", df_picks['S_thresh'][0], file=f)
+        print("pick method = ", df_picks['pick_method'][0], file=f)
+        print("residual outlier method = ", df_picks['ol_method'][0], file=f)
+        print("vps outlier method = {}".format(df_picks['vps_ol_method'][0]), file=f)
         print("filter method = {}".format(df_picks['filter_method'][0]), file=f)
         print("=================================================================================", file=f)
 
@@ -565,28 +602,30 @@ def summary(df_picks, pick_method, outlier_method, vps_method, p_thresh, s_thres
         print("Mean P residual = ", np.nanmean(df_picks['P_res'][df_picks['P_inrange']]))
         print("Mean S residual = ", np.nanmean(df_picks['S_res'][df_picks['S_inrange']]))
         print("---------------------------------------------------------------------------------")
-        print("P picks = {}   ({}%)".format(df_picks['P_phasenet'].count(),
-                                            (df_picks['P_phasenet'].count() / len(df_picks)) * 100))
-        print("S picks = {}   ({}%)".format(df_picks['S_phasenet'].count(),
-                                            (df_picks['S_phasenet'].count() / len(df_picks)) * 100))
+        print("P picks = {}   ({}%)".format(df_picks['P_phasenet'][df_picks['P_inrange']].count(),
+                                            (df_picks['P_phasenet'][df_picks['P_inrange']].count() / len(
+                                                df_picks)) * 100))
+        print("S picks = {}   ({}%)".format(df_picks['S_phasenet'][df_picks['S_inrange']].count(),
+                                            (df_picks['S_phasenet'][df_picks['S_inrange']].count() / len(
+                                                df_picks)) * 100))
         print("P-RMS = ", prms)
         print("S-RMS = ", srms)
         print("P outliers excluded = {}".format(len(p_out)))
         print("S outliers excluded = {}".format(len(s_out)))
         print("---------------------------------------------------------------------------------")
         print("PARAMETERS")
-        print("P threshold = ", p_thresh)
-        print("S threshold = ", s_thresh)
-        print("pick method = ", pick_method)
-        print("residual outlier method = ", outlier_method)
-        print("vps outlier method = {}".format(vps_method))
+        print("P threshold = ", df_picks['P_thresh'][0])
+        print("S threshold = ", df_picks['S_thresh'][0])
+        print("pick method = ", df_picks['pick_method'][0])
+        print("residual outlier method = ", df_picks['ol_method'][0])
+        print("vps outlier method = {}".format(df_picks['vps_ol_method'][0]))
         print("filter method = {}".format(df_picks['filter_method'][0]))
         print("=================================================================================")
 
     print("Summary information saved to ", os.path.join(savepath, 'summary.txt'))
 
 
-summary(df_picks, PN_pick_method, outlier_method, vps_method, p_threshold, s_threshold, plot_path)
+summary(df_picks, plot_path)
 
 
 def Histogram(df_picks, phase, p_out, s_out, vps_out, plot_path, Methods, method):
@@ -737,7 +776,7 @@ def scatterPlot(df_picks, plot_path, option, method):
         # ax2.plot(p_hist_dist.pdf(px), linewidth=2.5, label='P PDF')
         # ax2.plot(s_hist_dist.pdf(sx), linewidth=2.5, label='S PDF')
 
-        #ax2.tick_params(axis=u'both', which=u'both', length=0)
+        # ax2.tick_params(axis=u'both', which=u'both', length=0)
         plt.setp(ax2.get_xticklabels(), visible=False)
         # plt.setp(ax2.get_yticklabels(), visible=False)
     else:
@@ -842,13 +881,15 @@ def vpsPlot(df_picks, samples, delta, option, plot_path):
 
 
 vpsPlot(df_picks, n_samp, dt, 'PDF', plot_path)
+
+
 # %%
 
 # %%
 def wadati(df_picks, samples, delta, option, savepath):
     itp = df_picks['itp'][df_picks['vps_inrange']] * delta
     its = df_picks['its'][df_picks['vps_inrange']] * delta
-    vps = (its-itp)/itp
+    vps = (its - itp) / itp
 
     plt.close()
 
@@ -866,10 +907,10 @@ def wadati(df_picks, samples, delta, option, savepath):
     mean_l, = ax1.plot(x, np.mean(vps) * x, color='#333333', linestyle='dashdot', lw=2.4)
     # med_l, = ax1.plot(x, np.median(vps) * x, color='#333333', linestyle=':', lw=2.4)
 
-    slope, intercept, r_value, p_value, std_err = stats.linregress(itp, its-itp)
+    slope, intercept, r_value, p_value, std_err = stats.linregress(itp, its - itp)
     fit_l, = ax1.plot(x, intercept + slope * x, color='#333333', linestyle=':', lw=2.4)
     #
-    ax1.scatter(itp, its-itp, c='#d62728')
+    ax1.scatter(itp, its - itp, c='#d62728')
     leg = ax1.legend([mean_l, fit_l],
                      ["mean: y=%.2fx+%.0f" % (np.mean(vps), 0), "reg fit: y=%.2fx+%.0f" % (slope, intercept)],
                      loc='upper left')
@@ -904,4 +945,3 @@ def wadati(df_picks, samples, delta, option, savepath):
 wadati(df_picks, n_samp, dt, 'PDF', plot_path)
 
 # %%
-
