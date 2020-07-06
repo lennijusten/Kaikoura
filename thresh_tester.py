@@ -5,7 +5,7 @@ import os
 import pandas as pd
 import shlex
 
-test_name = 'filter4'
+test_name = 'filter0'
 test_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/FIlter tests'
 
 PN_pick_method = ['min_res']
@@ -478,10 +478,12 @@ def summary(df_picks, pick_method, outlier_method, vps_method, p_thresh, s_thres
         print("Mean P residual = ", np.nanmean(df_picks['P_res'][df_picks['P_inrange']]), file=f)
         print("Mean S residual = ", np.nanmean(df_picks['S_res'][df_picks['S_inrange']]), file=f)
         print("---------------------------------------------------------------------------------", file=f)
-        print("P picks = {}   ({}%)".format(df_picks['P_phasenet'].count(),
-                                            (df_picks['P_phasenet'].count()/len(df_picks))*100), file=f)
-        print("S picks = {}   ({}%)".format(df_picks['S_phasenet'].count(),
-                                            (df_picks['S_phasenet'].count()/len(df_picks))*100), file=f)
+        print("P picks = {}   ({}%)".format(df_picks['P_phasenet'][df_picks['P_inrange']].count(),
+                                            (df_picks['P_phasenet'][df_picks['P_inrange']].count() / len(
+                                                df_picks)) * 100), file=f)
+        print("S picks = {}   ({}%)".format(df_picks['S_phasenet'][df_picks['S_inrange']].count(),
+                                            (df_picks['S_phasenet'][df_picks['S_inrange']].count() / len(
+                                                df_picks)) * 100), file=f)
         print("P-RMS = ", prms, file=f)
         print("S-RMS = ", srms, file=f)
         print("P outliers excluded = {}".format(len(p_out)), file=f)
@@ -503,10 +505,12 @@ def summary(df_picks, pick_method, outlier_method, vps_method, p_thresh, s_thres
         print("Mean P residual = ", np.nanmean(df_picks['P_res'][df_picks['P_inrange']]))
         print("Mean S residual = ", np.nanmean(df_picks['S_res'][df_picks['S_inrange']]))
         print("---------------------------------------------------------------------------------")
-        print("P picks = {}   ({}%)".format(df_picks['P_phasenet'].count(),
-                                            (df_picks['P_phasenet'].count() / len(df_picks)) * 100))
-        print("S picks = {}   ({}%)".format(df_picks['S_phasenet'].count(),
-                                            (df_picks['S_phasenet'].count() / len(df_picks)) * 100))
+        print("P picks = {}   ({}%)".format(df_picks['P_phasenet'][df_picks['P_inrange']].count(),
+                                            (df_picks['P_phasenet'][df_picks['P_inrange']].count() / len(
+                                                df_picks)) * 100))
+        print("S picks = {}   ({}%)".format(df_picks['S_phasenet'][df_picks['S_inrange']].count(),
+                                            (df_picks['S_phasenet'][df_picks['S_inrange']].count() / len(
+                                                df_picks)) * 100))
         print("P-RMS = ", prms)
         print("S-RMS = ", srms)
         print("P outliers excluded = {}".format(len(p_out)))
