@@ -13,7 +13,7 @@ import shlex
 import matplotlib.pyplot as plt
 from scipy import stats
 
-PN_pick_method = ['max_prob']
+PN_pick_method = ['min_res']
 outlier_method = ['over', 2]
 vps_method = ['outlier']
 
@@ -22,8 +22,8 @@ tend = 100  # end time is 240 seconds after origin of earthquake
 dt = 0.01
 n_samp = int((tend - tbegin) / dt + 1)
 
-p_threshold = 0.50
-s_threshold = 0.10
+p_threshold = 0.05
+s_threshold = 0.05
 
 dataset_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset'
 outlier_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/Outliers'
@@ -653,12 +653,6 @@ def scatterPlot(df_picks, plot_path, option, method):
     p_prob_np = df_picks['P_prob'][df_picks['P_inrange']]
     s_prob_np = df_picks['S_prob'][df_picks['S_inrange']]
 
-    p_hist = np.histogram(p_res_np, bins='auto')
-    p_hist_dist = stats.rv_histogram(p_hist)
-
-    s_hist = np.histogram(s_res_np, bins='auto')
-    s_hist_dist = stats.rv_histogram(s_hist)
-
     px = np.linspace(0, method[1], len(p_res_np))
     sx = np.linspace(0, method[1], len(s_res_np))
 
@@ -708,8 +702,14 @@ def scatterPlot(df_picks, plot_path, option, method):
                     medianprops=dict(color='k'),
                     )
     elif option == 'PDF':
-        gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.33, left=0.1, right=0.95)
-        gs2 = fig.add_gridspec(ncols=1, nrows=1, top=0.22, bottom=0.02, left=0.1, right=0.95)
+        n, p_bins, patches = plt.hist(p_res_np, bins='auto')
+        py = stats.norm.pdf(p_bins, np.mean(p_res_np), np.std(p_res_np))
+
+        n, s_bins, patches = plt.hist(s_res_np, bins='auto')
+        sy = stats.norm.pdf(s_bins, np.mean(s_res_np), np.std(s_res_np))
+
+        gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.23, left=0.1, right=0.95)
+        gs2 = fig.add_gridspec(ncols=1, nrows=1, top=0.13, bottom=0.035, left=0.1, right=0.95)
 
         ax1 = plt.subplot(gs1[0], xlim=(0, method[1]), ylim=(0, 1))
         ax1.grid(axis='both', alpha=0.4)
@@ -729,11 +729,17 @@ def scatterPlot(df_picks, plot_path, option, method):
         leg.get_frame().set_edgecolor('#262626')
 
         ax2 = plt.subplot(gs2[0], xlim=(0, method[1]))
-        ax2.plot(px, p_hist_dist.pdf(px), linewidth=2.5, label='P PDF')
-        ax2.plot(sx, s_hist_dist.pdf(sx), linewidth=2.5, label='S PDF')
-        ax2.tick_params(axis=u'both', which=u'both', length=0)
+
+        ax2.plot(p_bins, py, '--', linewidth=2)
+        ax2.plot(s_bins, sy, '--', linewidth=2)
+        plt.ylabel('PDF')
+
+        # ax2.plot(p_hist_dist.pdf(px), linewidth=2.5, label='P PDF')
+        # ax2.plot(s_hist_dist.pdf(sx), linewidth=2.5, label='S PDF')
+
+        #ax2.tick_params(axis=u'both', which=u'both', length=0)
         plt.setp(ax2.get_xticklabels(), visible=False)
-        plt.setp(ax2.get_yticklabels(), visible=False)
+        # plt.setp(ax2.get_yticklabels(), visible=False)
     else:
         print("Invalid option arg: ('boxplot', 'PDF')")
 
@@ -794,14 +800,14 @@ def vpsPlot(df_picks, samples, delta, option, plot_path):
                     medianprops=dict(color='k'),
                     )
     elif option == 'PDF':
-        p_hist = np.histogram(itp, bins='auto')
-        p_hist_dist = stats.rv_histogram(p_hist)
+        n, p_bins, patches = plt.hist(itp, bins='auto', range=(0, (samples + 100) * delta))
+        py = stats.norm.pdf(p_bins, np.mean(itp), np.std(itp))
 
-        s_hist = np.histogram(its, bins='auto')
-        s_hist_dist = stats.rv_histogram(s_hist)
+        n, s_bins, patches = plt.hist(its, bins='auto', range=(0, (samples + 100) * delta))
+        sy = stats.norm.pdf(s_bins, np.mean(its), np.std(its))
 
-        gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.33, left=0.1, right=0.95)
-        gs2 = fig.add_gridspec(ncols=1, nrows=1, top=0.22, bottom=0.02, left=0.1, right=0.95)
+        gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.23, left=0.1, right=0.95)
+        gs2 = fig.add_gridspec(ncols=1, nrows=1, top=0.13, bottom=0.035, left=0.1, right=0.95)
 
         ax1 = plt.subplot(gs1[0], xlim=(0, (samples + 100) * delta), ylim=(0, (samples + 100) * delta))
         ax1.grid(axis='both', alpha=0.4)
@@ -820,12 +826,13 @@ def vpsPlot(df_picks, samples, delta, option, plot_path):
         leg.get_frame().set_edgecolor('#262626')
 
         ax2 = plt.subplot(gs2[0], xlim=(0, (samples + 100) * delta))
-        ax2.tick_params(axis=u'both', which=u'both', length=0)
+        # ax2.tick_params(axis=u'both', which=u'both', length=0)
         plt.setp(ax2.get_xticklabels(), visible=False)
-        plt.setp(ax2.get_yticklabels(), visible=False)
+        # plt.setp(ax2.get_yticklabels(), visible=False)
 
-        ax2.plot(x, p_hist_dist.pdf(x), linewidth=2.5, label='P PDF')
-        ax2.plot(x, s_hist_dist.pdf(x), linewidth=2.5, label='S PDF')
+        ax2.plot(p_bins, py, '--', linewidth=2)
+        ax2.plot(s_bins, sy, '--', linewidth=2)
+        plt.ylabel("PDF")
     else:
         print("Invalid option arg: ('boxplot', 'PDF')")
 
