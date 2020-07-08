@@ -22,6 +22,9 @@ tend = 100  # end time is 240 seconds after origin of earthquake
 dt = 0.01
 n_samp = int((tend - tbegin) / dt + 1)
 
+tmin = 0
+tmax = 100
+
 p_threshold = 0.05
 s_threshold = 0.05
 
@@ -29,7 +32,9 @@ dataset_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset'
 outlier_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/Outliers'
 output_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/PhaseNet/output'
 arrival_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/Arrival.pickle'
+event_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/Event.pickle'
 plot_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/Plots'
+sac_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Events/'
 
 # METHODS:
 # earliest -- Uses PhaseNet's earliest pick as the arrival pick
@@ -46,15 +51,29 @@ methods = {
 }
 
 
-def initFrames(dataset_path, output_path, arrival_path):
+def checkTimeInt(tbegin, tend, tmin, tmax):
+    if tmin < tbegin:
+        tmin = tbegin
+        print("WARNING: tmin is set before queried start time. Setting to tbegin")
+    if tmax > tend:
+        tmax = tend
+        print("WARNING: tmax is set after queried end time. Setting to tend")
+    return tmin, tmax
+
+
+tmin, tmax = checkTimeInt(tbegin, tend, tmin, tmax)
+
+
+def initFrames(dataset_path, output_path, arrival_path, event_path):
     print("Initializing dataframes...")
     log = pd.read_csv(os.path.join(dataset_path, 'data_log.csv'))
     picks = pd.read_csv(os.path.join(output_path, 'picks.csv'))
     arrivals = pd.read_pickle(arrival_path)
-    return log, picks, arrivals
+    events = pd.read_pickle(event_path)
+    return log, picks, arrivals, events
 
 
-log, picks, arrivals = initFrames(dataset_path, output_path, arrival_path)
+log, picks, arrivals, events = initFrames(dataset_path, output_path, arrival_path, event_path)
 
 
 def pickConverter(picks):
@@ -84,7 +103,7 @@ def pickConverter(picks):
 picks = pickConverter(picks)
 
 
-def thresholder(picks, p_thresh, s_thresh):
+def probThresholder(picks, p_thresh, s_thresh):
     print("Removing picks below probability thresholds...")
     for row in range(len(picks)):
         p_idx = [i for i in range(len(picks['tp_prob'][row])) if picks['tp_prob'][row][i] < p_thresh]
@@ -99,7 +118,7 @@ def thresholder(picks, p_thresh, s_thresh):
     return picks
 
 
-picks = thresholder(picks, p_threshold, s_threshold)
+picks = probThresholder(picks, p_threshold, s_threshold)
 
 
 def timeConverter(df):
@@ -137,6 +156,36 @@ def pick2time(df):
 df = pick2time(df)
 
 
+def dropNAs(df):
+    print("Dropping arrivals that do not include a P & S GeoNet time...")
+    df = df.drop(df.loc[(df['P_time'].isna() == True) & (df['S_time'].isna() == True)].index)
+    return df
+
+
+df = dropNAs(df)
+
+
+def timeThresholder(df, tmin, tmax):
+    print("Dropping arrivals outside of time window...")
+    init_len = len(df)
+    p_delay = df.loc[(df['P_time']-df['start'] >= tmax) | (df['P_time']-df['start'] <= tmin)]
+    s_delay = df.loc[(df['S_time']-df['start'] >= tmax) | (df['S_time']-df['start'] <= tmin)]
+
+    out_window = pd.concat([p_delay, s_delay], axis=1, sort=False, join='outer')
+
+    df = df[~df.index.isin(out_window.index)]
+    df = df.reset_index()
+    final_len = len(df)
+    print("{} rows dropped (tmin = {}, tmax = {})".format(init_len-final_len, tmin, tmax))
+
+    df['tmin'] = [tmin]*len(df)
+    df['tmax'] = [tmax]*len(df)
+    return df
+
+
+df = timeThresholder(df, tmin, tmax)
+
+
 def resCalculator(df):
     print("Calculating residuals from Geonet arrival times...")
     p_res_lst = []
@@ -165,7 +214,7 @@ df = resCalculator(df)
 
 headers = ['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end', 'P_residual', 'P_time',
            'P_phasenet', 'tp_prob', 'itp', 'S_residual', 'S_time', 'S_phasenet', 'ts_prob', 'its',
-           'filter_method', 'fname']
+           'tmin', 'tmax', 'filter_method', 'fname']
 df = df[headers].sort_values(['event_id', 'station'])
 df.to_pickle(os.path.join(dataset_path, "data_log_merged.pickle"))
 df.to_csv(os.path.join(dataset_path, "data_log_merged.csv"), index=False)
@@ -323,24 +372,7 @@ def picker(df, p_thresh, s_thresh, method, savepath):
                         s_empty_count += 1
                         pass
     elif method == 'hybrid':
-        for row in range(len(df)):
-            fname.append(df['fname'][row])
-            if not df['itp'][row]:
-                p_pick.append(np.nan)
-                p_res.append(np.nan)
-                p_prob.append(np.nan)
-                p_empty_count += 1
-            elif len(df['itp'][row]) == 1:
-                p_pick.append(df['P_phasenet'][row][0])
-                p_prob.append(df['tp_prob'][row][0])
-                try:
-                    p_res.append(df['P_residual'][row][0])
-                except IndexError:
-                    p_res.append(np.nan)
-                    pass
-            else:
-                if max(df['tp_prob'][row]) > 0.75:
-                    pass
+        pass
     elif method == 'min_res':
         for row in range(len(df)):
             fname.append(df['fname'][row])
@@ -369,7 +401,6 @@ def picker(df, p_thresh, s_thresh, method, savepath):
     else:
         print("Invalid method: method = (['earliest'], ['max_prob')]")
 
-    vps = []
     for row in range(len(df)):
         try:
             vps.append(its[row] / itp[row])
@@ -399,12 +430,12 @@ def picker(df, p_thresh, s_thresh, method, savepath):
     # df_picks['itp'] = df_picks['itp'].astype('Int64')
     # df_picks['its'] = df_picks['its'].astype('Int64')
 
-    df_picks = pd.merge(df_picks, df[['event_id', 'network', 'station', 'P_time', 'S_time', 'filter_method', 'fname']],
-                        how='left', on='fname')
+    df_picks = pd.merge(df_picks, df[['event_id', 'network', 'station', 'P_time', 'S_time',
+                                      'tmin', 'tmax', 'filter_method', 'fname']], how='left', on='fname')
     df_picks = df_picks[
         ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_thresh",
          "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_thresh",
-         "vps", "pick_method", "filter_method", "fname"]].sort_values(['event_id', 'station'])
+         "vps", "pick_method", "tmin", "tmax", "filter_method", "fname"]].sort_values(['event_id', 'station'])
 
     df_picks.to_pickle(os.path.join(savepath, "filter_picks.pickle"))
     df_picks.to_csv(os.path.join(savepath, "filter_picks.csv"), index=False)
@@ -466,7 +497,7 @@ def outliers(df_picks, method, savepath):
     df_picks = df_picks[
         ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange", "P_thresh",
          "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange", "S_thresh",
-         "vps", "pick_method", "ol_method", "filter_method", "fname"]]
+         "vps", "pick_method", "ol_method", "filter_method", "tmin", "tmax", "fname"]]
 
     df_picks.to_pickle(os.path.join(savepath, "filter_picks.pickle"))
     df_picks.to_csv(os.path.join(savepath, "filter_picks.csv"), index=False)
@@ -502,16 +533,16 @@ def vpsOutliers(df_picks, p_out, s_out, method, savepath):
 
     vps_outliers = df_picks.loc[(df_picks['vps'].notna()) & (df_picks['vps_inrange'] == False)]
     vps_outliers = vps_outliers[["event_id", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange",
-                                 "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange",
-                                 "vps", "vps_inrange", "pick_method", "ol_method", "filter_method", "fname"]]
+                                 "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange", "vps", "vps_inrange",
+                                 "pick_method", "ol_method", "filter_method", "fname"]]
 
     vps_outliers.to_pickle(os.path.join(savepath, "vps_outliers.pickle"))
     vps_outliers.to_csv(os.path.join(savepath, "vps_outliers.csv"), index=False)
 
     df_picks = df_picks[
         ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange", "P_thresh",
-         "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange", "S_thresh",
-         "vps", "vps_inrange", "pick_method", "ol_method", "vps_ol_method", "filter_method", "fname"]]
+         "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange", "S_thresh", "vps", "vps_inrange",
+         "pick_method", "ol_method", "vps_ol_method", "tmin", "tmax", "filter_method", "fname"]]
 
     print("VPS outliers isolated and saved to ", savepath)
     return df_picks, vps_outliers
@@ -522,44 +553,276 @@ df_picks, vps_out = vpsOutliers(df_picks, p_out, s_out, vps_method, outlier_path
 print("=================================================================================")
 
 
-def eventParser(df_picks, savepath):
+def eventParser(df_picks, events, p_out, s_out, savepath):
+    print("Parsing arrivals by event_id...")
+
     # Event statistics
+    event_list = []
     event_rating = []
+    rms = []
+    n = []
+    prob_mean = []
+    prob_std = []
 
     p_rms = []
-    np = []
-    np_out = []
+    N_p = []
+    Np_out = []
     p_mean_res = []
     p_median_res = []
     p_prob_mean = []
     p_prob_std = []
 
     s_rms = []
-    sp = []
-    sp_out = []
+    N_s = []
+    Ns_out = []
     s_mean_res = []
     s_median_res = []
     s_prob_mean = []
     s_prob_std = []
 
     for event in df_picks['event_id'].unique():
+        event_list.append(event)
         df_temp = df_picks.loc[df_picks['event_id'] == event]
 
-        p_rms.append()
-        np = []
-        np_out = []
-        p_mean_res = []
-        p_median_res = []
-        p_prob_mean = []
-        p_prob_std = []
+        pssr = np.nansum([i ** 2 for i in df_temp['P_res'][df_temp['P_inrange']]])
+        sssr = np.nansum([i ** 2 for i in df_temp['S_res'][df_temp['S_inrange']]])
+
+        Np = df_temp['P_res'][df_temp['P_inrange']].count()
+        Ns = df_temp['S_res'][df_temp['S_inrange']].count()
+
+        try:
+            prms = np.sqrt(pssr / (Np - 1))
+        except RuntimeWarning:
+            prms = np.nan
+        try:
+            srms = np.sqrt(sssr / (Ns - 1))
+        except RuntimeWarning:
+            srms = np.nan
+
+        try:
+            RMS = np.sqrt((pssr + sssr) / (Np + Ns - 1))
+        except RuntimeWarning:
+            RMS = np.nan
+
+        event_rating.append(np.nan)
+        rms.append(RMS)
+        n.append(len(df_temp))
+        prob_mean.append(np.mean(pd.concat([df_temp['P_prob'][df_temp['P_inrange']],
+                                            df_temp['S_prob'][df_temp['S_inrange']]])))
+        prob_std.append(np.std(pd.concat([df_temp['P_prob'][df_temp['P_inrange']],
+                                          df_temp['S_prob'][df_temp['S_inrange']]])))
+
+        try:
+            p_rms.append(prms)
+            N_p.append(Np)
+            Np_out.append(len(p_out.loc[p_out['event_id'] == event]))
+            p_mean_res.append(np.nanmean(df_temp['P_res'][df_temp['P_inrange']]))
+            p_median_res.append(np.nanmedian(df_temp['P_res'][df_temp['P_inrange']]))
+            p_prob_mean.append(np.nanmean(df_temp['P_prob'][df_temp['P_inrange']]))
+            p_prob_std.append(np.std(df_temp['P_prob'][df_temp['P_inrange']]))
+
+            s_rms.append(srms)
+            N_s.append(Ns)
+            Ns_out.append(len(s_out.loc[s_out['event_id'] == event]))
+            s_mean_res.append(np.nanmean(df_temp['S_res'][df_temp['S_inrange']]))
+            s_median_res.append(np.nanmedian(df_temp['S_res'][df_temp['S_inrange']]))
+            s_prob_mean.append(np.nanmean(df_temp['S_prob'][df_temp['S_inrange']]))
+            s_prob_std.append(np.std(df_temp['S_prob'][df_temp['S_inrange']]))
+        except RuntimeWarning:
+            pass
+
+    event_dict = {
+        "event_id": event_list,
+        "event_rating": event_rating,
+        "n_arrivals": n,
+        "rms": rms,
+        "P_rms": p_rms,
+        "S_rms": s_rms,
+        "nP": N_p,
+        "nS": N_s,
+        "nP_outliers": Np_out,
+        "nS_outliers": Ns_out,
+        "P_mean_res": p_mean_res,
+        "S_mean_res": s_mean_res,
+        "P_median_res": p_median_res,
+        "S_median_res": s_median_res,
+        "prob_mean": prob_mean,
+        "prob_std": prob_std,
+        "P_prob_mean": p_prob_mean,
+        "S_prob_mean": s_prob_mean,
+        "P_prob_std": p_prob_std,
+        "S_prob_std": s_prob_std,
+        "pick_method": [df_temp['pick_method'].iloc[0]] * len(df_picks['event_id'].unique()),
+        "ol_method": [df_temp['ol_method'].iloc[0]] * len(df_picks['event_id'].unique()),
+        "filter_method": [df_temp['filter_method'].iloc[0]] * len(df_picks['event_id'].unique())
+    }
+
+    df_events = pd.DataFrame.from_dict(event_dict)
+    df_events = pd.merge(df_events, events, on='event_id', how='left')
+
+    df_events.to_pickle(os.path.join(savepath, "event_comparison.pickle"))
+    df_events.to_csv(os.path.join(savepath, "event_comparison.csv"), index=False)
+    print("Saving event comparison to ", savepath)
+    return df_events
 
 
-def summary(df_picks, savepath):
+df_events = eventParser(df_picks, events, p_out, s_out, dataset_path)
+
+
+# %%
+def eventPlotter(df_events, x, x_descrip, min_arrivals, option, savepath):
+    df_events_filt = df_events.loc[df_events['n_arrivals'] >= min_arrivals]
+
+    n, bins, patches = plt.hist(x=df_events_filt['rms'], bins=30, facecolor='#008080', alpha=0.7, rwidth=0.85)
+    mu = np.mean(df_events_filt['rms'])
+    sigma = np.std(df_events_filt['rms'])
+
+    plt.grid(axis='y', alpha=0.75)
+    plt.xlabel('P rms')
+    plt.ylabel('Frequency')
+    plt.title('Histogram of rms by events')
+
+    maxfreq = n.max()
+    plt.ylim(ymax=np.ceil(maxfreq / 10) * 10 if maxfreq % 10 else maxfreq + 10)
+    plt.savefig(savepath)
+    plt.show()
+
+    fig = plt.figure()
+    fig.suptitle('RMS by {}'.format(x_descrip))
+
+    xlin = np.linspace(np.min(df_events_filt[x]), np.max(df_events_filt[x]), len(df_events_filt[x]))
+    slope, intercept, r_value, p_value, std_err = stats.linregress(df_events_filt[x], df_events_filt['rms'])
+    if option == 'boxplot':
+        gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.2, left=0.13, right=0.95)
+        gs2 = fig.add_gridspec(ncols=1, nrows=1, top=0.15, bottom=0.02, left=0.1, right=0.95)
+
+        ax1 = plt.subplot(gs1[0], xlim=(0, 1))
+        ax1.grid(axis='both', alpha=0.4)
+        ax1.set(ylabel='RMS', xlabel=x_descrip)
+
+        ax1.scatter(df_events_filt[x], df_events_filt['rms'], c='#008080')
+        fit_l, = ax1.plot(xlin, intercept + slope * xlin, color='#333333', linestyle=':', lw=2.4)
+
+        leg = ax1.legend([fit_l],
+                         ["linear fit: y=%.2fx+%.0f" % (slope, intercept)],
+                         loc='upper left')
+        leg.get_frame().set_edgecolor('#262626')
+
+        ax2 = plt.subplot(gs2[0], frame_on=False)
+        ax2.tick_params(axis=u'both', which=u'both', length=0)
+        plt.setp(ax2.get_xticklabels(), visible=False)
+        plt.setp(ax2.get_yticklabels(), visible=False)
+        ax2.boxplot(df_events_filt[x], vert=False, whis=(0, 100), patch_artist=True,
+                    boxprops=dict(facecolor='#008080', color='k'),
+                    medianprops=dict(color='k'),
+                    )
+    elif option == 'PDF':
+        gs1 = fig.add_gridspec(ncols=1, nrows=1, top=0.93, bottom=0.23, left=0.1, right=0.95)
+        gs2 = fig.add_gridspec(ncols=1, nrows=1, top=0.13, bottom=0.035, left=0.1, right=0.95)
+
+        ax1 = plt.subplot(gs1[0])
+        ax1.grid(axis='both', alpha=0.4)
+        ax1.set(ylabel='RMS', xlabel=x_descrip)
+
+        ax1.scatter(df_events_filt[x], df_events_filt['rms'], c='#008080')
+        fit_l, = ax1.plot(xlin, intercept + slope * xlin, color='#333333', linestyle=':', lw=2.4)
+
+        leg = ax1.legend([fit_l],
+                         ["linear fit: y=%.2fx+%.0f" % (slope, intercept)],
+                         loc='upper left')
+        leg.get_frame().set_edgecolor('#262626')
+
+        ax2 = plt.subplot(gs2[0], frame_on=True)
+        n, bins, patches = plt.hist(df_events_filt[x], bins='auto')
+        y = stats.norm.pdf(bins, np.mean(df_events_filt[x]), np.std(df_events_filt[x]))
+
+        ax2 = plt.subplot(gs2[0])
+        # ax2.tick_params(axis=u'both', which=u'both', length=0)
+        plt.setp(ax2.get_xticklabels(), visible=False)
+        # plt.setp(ax2.get_yticklabels(), visible=False)
+
+        ax2.plot(bins, y, '--', c='#008080', linewidth=2)
+        plt.ylabel("PDF")
+
+    else:
+        print("Invalid option arg: ('boxplot', 'PDF')")
+
+    plt.savefig(os.path.join(plot_path, 'wadati.png'))
+    plt.show()
+    plt.close()
+
+
+eventPlotter(df_events, 'prob_mean', 'Prob mean', 20, 'PDF', plot_path)
+
+
+# %%
+
+def multiEventPlotter(df_events, sac_path, savepath):
+    for event in df_events['event_id']:
+        st = obspy.read(os.path.join(sac_path, event, '*.SAC'))
+    pass
+
+
+# %%
+def timeSummary(df, savepath):
+    p_delay = df['P_time'][df['P_time'].notna()]-df['start'][df['P_time'].notna()]
+    s_delay = df['S_time'][df['S_time'].notna()]-df['start'][df['S_time'].notna()]
+
+    fig, ax = plt.subplots()
+    n, bins, patches = plt.hist(p_delay, bins=30, alpha=0.7, rwidth=0.85)
+    mu = np.mean(p_delay)
+    sigma = np.std(p_delay)
+
+    plt.grid(axis='y', alpha=0.75)
+    plt.xlabel('Arrival delay from event start (s)')
+    plt.ylabel('Frequency')
+    plt.title('P Arrival Delay')
+    textstr = '\n'.join((
+        r'$n=%.0f$' % (len(p_delay),),
+        r'$\mu=%.4f$' % (mu,),
+        r'$\mathrm{median}=%.4f$' % (round(np.median(p_delay), 4),),
+        r'$\sigma=%.4f$' % (sigma,)))
+    ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=14,
+            verticalalignment='top',
+            bbox=dict(boxstyle='square,pad=.6', facecolor='lightgrey', edgecolor='black', alpha=1))
+    maxfreq = n.max()
+    plt.ylim(ymax=np.ceil(maxfreq / 10) * 10 if maxfreq % 10 else maxfreq + 10)
+    plt.savefig(savepath)
+    plt.show()
+
+    fig, ax = plt.subplots()
+    n, bins, patches = plt.hist(s_delay, bins=30, alpha=0.7, rwidth=0.85, facecolor='#ff7f0e')
+    mu = np.mean(s_delay)
+    sigma = np.std(s_delay)
+
+    plt.grid(axis='y', alpha=0.75)
+    plt.xlabel('Arrival delay from event start (s)')
+    plt.ylabel('Frequency')
+    plt.title('S Arrival Delay')
+    textstr = '\n'.join((
+        r'$n=%.0f$' % (len(s_delay),),
+        r'$\mu=%.4f$' % (mu,),
+        r'$\mathrm{median}=%.4f$' % (round(np.median(s_delay), 4),),
+        r'$\sigma=%.4f$' % (sigma,)))
+    ax.text(0.05, 0.95, textstr, transform=ax.transAxes, fontsize=14,
+            verticalalignment='top',
+            bbox=dict(boxstyle='square,pad=.6', facecolor='lightgrey', edgecolor='black', alpha=1))
+    maxfreq = n.max()
+    plt.ylim(ymax=np.ceil(maxfreq / 10) * 10 if maxfreq % 10 else maxfreq + 10)
+    plt.savefig(savepath)
+    plt.show()
+
+
+timeSummary(df, plot_path)
+# %%
+
+
+def summary(df_picks, p_out, s_out, savepath):
     pssr = np.nansum([i ** 2 for i in df_picks['P_res'][df_picks['P_inrange']]])
     sssr = np.nansum([i ** 2 for i in df_picks['S_res'][df_picks['S_inrange']]])
 
-    Np = np.count_nonzero(~np.isnan(df_picks['P_res'][df_picks['P_inrange']]))
-    Ns = np.count_nonzero(~np.isnan(df_picks['S_res'][df_picks['S_inrange']]))
+    Np = df_picks['P_res'][df_picks['P_inrange']].count()
+    Ns = df_picks['S_res'][df_picks['S_inrange']].count()
 
     prms = np.sqrt(pssr / (Np - 1))
     srms = np.sqrt(sssr / (Ns - 1))
@@ -572,60 +835,60 @@ def summary(df_picks, savepath):
 
         print("Number of arrivals = ", len(df_picks), file=f)
         print("RMS = ", rms, file=f)
-        print("Mean P residual = ", np.nanmean(df_picks['P_res'][df_picks['P_inrange']]), file=f)
-        print("Mean S residual = ", np.nanmean(df_picks['S_res'][df_picks['S_inrange']]), file=f)
-        print("---------------------------------------------------------------------------------", file=f)
-        print("P picks = {}   ({}%)".format(df_picks['P_phasenet'][df_picks['P_inrange']].count(),
-                                            (df_picks['P_phasenet'][df_picks['P_inrange']].count() / len(
-                                                df_picks)) * 100), file=f)
-        print("S picks = {}   ({}%)".format(df_picks['S_phasenet'][df_picks['S_inrange']].count(),
-                                            (df_picks['S_phasenet'][df_picks['S_inrange']].count() / len(
-                                                df_picks)) * 100), file=f)
         print("P-RMS = ", prms, file=f)
         print("S-RMS = ", srms, file=f)
+        print("---------------------------------------------------------------------------------", file=f)
+        print("P picks = {}   ({}%)".format(Np, (Np / len(df_picks)) * 100), file=f)
+        print("S picks = {}   ({}%)".format(Ns, (Ns / len(df_picks)) * 100), file=f)
+        print("Mean P residual = ", np.nanmean(df_picks['P_res'][df_picks['P_inrange']]), file=f)
+        print("Mean S residual = ", np.nanmean(df_picks['S_res'][df_picks['S_inrange']]), file=f)
+        print("Median P residual = ", np.nanmedian(df_picks['P_res'][df_picks['P_inrange']]), file=f)
+        print("Median S residual = ", np.nanmedian(df_picks['S_res'][df_picks['S_inrange']]), file=f)
         print("P outliers excluded = {}".format(len(p_out)), file=f)
         print("S outliers excluded = {}".format(len(s_out)), file=f)
         print("---------------------------------------------------------------------------------", file=f)
         print("PARAMETERS", file=f)
-        print("P threshold = ", df_picks['P_thresh'][0], file=f)
-        print("S threshold = ", df_picks['S_thresh'][0], file=f)
-        print("pick method = ", df_picks['pick_method'][0], file=f)
-        print("residual outlier method = ", df_picks['ol_method'][0], file=f)
-        print("vps outlier method = {}".format(df_picks['vps_ol_method'][0]), file=f)
-        print("filter method = {}".format(df_picks['filter_method'][0]), file=f)
+        print("P threshold = ", df_picks['P_thresh'].iloc[0], file=f)
+        print("S threshold = ", df_picks['S_thresh'].iloc[0], file=f)
+        print("tmin = ", df_picks['tmin'].iloc[0], file=f)
+        print("tmax = ", df_picks['tmax'].iloc[0], file=f)
+        print("pick method = ", df_picks['pick_method'].iloc[0], file=f)
+        print("residual outlier method = ", df_picks['ol_method'].iloc[0], file=f)
+        print("vps outlier method = {}".format(df_picks['vps_ol_method'].iloc[0]), file=f)
+        print("filter method = {}".format(df_picks['filter_method'].iloc[0]), file=f)
         print("=================================================================================", file=f)
 
         print(datetime.datetime.now())
 
         print("Number of arrivals = ", len(df_picks))
         print("RMS = ", rms)
-        print("Mean P residual = ", np.nanmean(df_picks['P_res'][df_picks['P_inrange']]))
-        print("Mean S residual = ", np.nanmean(df_picks['S_res'][df_picks['S_inrange']]))
-        print("---------------------------------------------------------------------------------")
-        print("P picks = {}   ({}%)".format(df_picks['P_phasenet'][df_picks['P_inrange']].count(),
-                                            (df_picks['P_phasenet'][df_picks['P_inrange']].count() / len(
-                                                df_picks)) * 100))
-        print("S picks = {}   ({}%)".format(df_picks['S_phasenet'][df_picks['S_inrange']].count(),
-                                            (df_picks['S_phasenet'][df_picks['S_inrange']].count() / len(
-                                                df_picks)) * 100))
         print("P-RMS = ", prms)
         print("S-RMS = ", srms)
+        print("---------------------------------------------------------------------------------")
+        print("P picks = {}   ({}%)".format(Np, (Np / len(df_picks)) * 100))
+        print("S picks = {}   ({}%)".format(Ns, (Ns / len(df_picks)) * 100))
+        print("Mean P residual = ", np.nanmean(df_picks['P_res'][df_picks['P_inrange']]))
+        print("Mean S residual = ", np.nanmean(df_picks['S_res'][df_picks['S_inrange']]))
+        print("Median P residual = ", np.nanmedian(df_picks['P_res'][df_picks['P_inrange']]))
+        print("Median S residual = ", np.nanmedian(df_picks['S_res'][df_picks['S_inrange']]))
         print("P outliers excluded = {}".format(len(p_out)))
         print("S outliers excluded = {}".format(len(s_out)))
         print("---------------------------------------------------------------------------------")
         print("PARAMETERS")
-        print("P threshold = ", df_picks['P_thresh'][0])
-        print("S threshold = ", df_picks['S_thresh'][0])
-        print("pick method = ", df_picks['pick_method'][0])
-        print("residual outlier method = ", df_picks['ol_method'][0])
-        print("vps outlier method = {}".format(df_picks['vps_ol_method'][0]))
-        print("filter method = {}".format(df_picks['filter_method'][0]))
+        print("P threshold = ", df_picks['P_thresh'].iloc[0])
+        print("S threshold = ", df_picks['S_thresh'].iloc[0])
+        print("tmin = ", df_picks['tmin'].iloc[0])
+        print("tmax = ", df_picks['tmax'].iloc[0])
+        print("pick method = ", df_picks['pick_method'].iloc[0])
+        print("residual outlier method = ", df_picks['ol_method'].iloc[0])
+        print("vps outlier method = {}".format(df_picks['vps_ol_method'].iloc[0]))
+        print("filter method = {}".format(df_picks['filter_method'].iloc[0]))
         print("=================================================================================")
 
     print("Summary information saved to ", os.path.join(savepath, 'summary.txt'))
 
 
-summary(df_picks, plot_path)
+summary(df_picks, p_out, s_out, plot_path)
 
 
 def Histogram(df_picks, phase, p_out, s_out, vps_out, plot_path, Methods, method):
