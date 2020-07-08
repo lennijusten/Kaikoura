@@ -5,8 +5,8 @@ import os
 import pandas as pd
 import shlex
 
-test_name = 'filter0'
-test_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/FIlter tests'
+test_name = 'window0-40'
+test_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/WindowTests'
 
 PN_pick_method = ['min_res']
 outlier_method = ['over', 2]
@@ -19,6 +19,8 @@ n_samp = int((tend - tbegin) / dt + 1)
 
 threshold = np.linspace(0.05, 1, 20)
 
+tmin = 0
+tmax = 40
 
 dataset_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset'
 outlier_path = '/Users/Lenni/Documents/PycharmProjects/Kaikoura/Dataset/Outliers'
@@ -39,6 +41,19 @@ methods = {
     "over": 'outliers over a limit excluded',
     "range": 'vps ratios in range'
 }
+
+def checkTimeInt(tbegin, tend, tmin, tmax):
+    if tmin < tbegin:
+        tmin = tbegin
+        print("WARNING: tmin is set before queried start time. Setting to tbegin")
+    if tmax > tend:
+        tmax = tend
+        print("WARNING: tmax is set after queried end time. Setting to tend")
+    return tmin, tmax
+
+
+tmin, tmax = checkTimeInt(tbegin, tend, tmin, tmax)
+
 
 def initFrames(dataset_path, output_path, arrival_path):
     print("Initializing dataframes...")
@@ -76,6 +91,7 @@ def pickConverter(picks):
 
 
 picks = pickConverter(picks)
+
 
 def timeConverter(df):
     print("Converting arrivals to UTC DateTime...")
@@ -115,6 +131,30 @@ def pick2time(df):
 
     df['P_phasenet'] = p_utc_picks
     df['S_phasenet'] = s_utc_picks
+    return df
+
+
+def dropNAs(df):
+    print("Dropping arrivals that do not include a P & S GeoNet time...")
+    df = df.drop(df.loc[(df['P_time'].isna() == True) & (df['S_time'].isna() == True)].index)
+    return df
+
+
+def timeThresholder(df, tmin, tmax):
+    print("Dropping arrivals outside of time window...")
+    init_len = len(df)
+    p_delay = df.loc[(df['P_time']-df['start'] >= tmax) | (df['P_time']-df['start'] <= tmin)]
+    s_delay = df.loc[(df['S_time']-df['start'] >= tmax) | (df['S_time']-df['start'] <= tmin)]
+
+    out_window = pd.concat([p_delay, s_delay], axis=1, sort=False, join='outer')
+
+    df = df[~df.index.isin(out_window.index)]
+    df = df.reset_index()
+    final_len = len(df)
+    print("{} rows dropped (tmin = {}, tmax = {})".format(init_len-final_len, tmin, tmax))
+
+    df['tmin'] = [tmin]*len(df)
+    df['tmax'] = [tmax]*len(df)
     return df
 
 
@@ -363,15 +403,16 @@ def picker(df, p_thresh, s_thresh, method, savepath):
                                                 'S_phasenet', 'S_res', 'S_prob', 'its', 'S_thresh',
                                                 'vps', 'pick_method', 'fname'])
 
-    df_picks = pd.merge(df_picks, df[['event_id', 'network', 'station', 'P_time', 'S_time', 'filter_method', 'fname']],
-                        how='left', on='fname')
+    df_picks = pd.merge(df_picks, df[['event_id', 'network', 'station', 'P_time', 'S_time', 'filter_method',
+                                      'tmin', 'tmax', 'fname']], how='left', on='fname')
+
     df_picks = df_picks[
         ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_thresh",
          "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_thresh",
-         "vps", "pick_method", "filter_method", "fname"]].sort_values(['event_id', 'station'])
-
+         "vps", "pick_method", "tmin", "tmax", "filter_method", "fname"]].sort_values(['event_id', 'station'])
 
     return df_picks, p_empty_count, s_empty_count
+
 
 def outliers(df_picks, method, savepath):
     m = [method] * len(df_picks)
@@ -414,12 +455,13 @@ def outliers(df_picks, method, savepath):
 
     df_picks = df_picks[
         ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange", "P_thresh",
-         "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange",  "S_thresh",
-         "vps", "pick_method", "ol_method", "filter_method", "fname"]]
+         "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange", "S_thresh",
+         "vps", "pick_method", "ol_method", "filter_method", "tmin", "tmax", "fname"]]
 
     df_picks.to_pickle(os.path.join(savepath, "filter_picks.pickle"))
     df_picks.to_csv(os.path.join(savepath, "filter_picks.csv"), index=False)
     return df_picks, p_outliers, s_outliers
+
 
 def vpsOutliers(df_picks, p_out, s_out, method, savepath):
     m = [method] * len(df_picks)
@@ -453,9 +495,10 @@ def vpsOutliers(df_picks, p_out, s_out, method, savepath):
 
     df_picks = df_picks[
         ["event_id", "network", "station", "P_time", "P_phasenet", "P_res", "P_prob", "itp", "P_inrange", "P_thresh",
-         "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange", "S_thresh",
-         "vps", "vps_inrange", "pick_method", "ol_method", "vps_ol_method", "filter_method", "fname"]]
+         "S_time", "S_phasenet", "S_res", "S_prob", "its", "S_inrange", "S_thresh", "vps", "vps_inrange",
+         "pick_method", "ol_method", "vps_ol_method", "tmin", "tmax", "filter_method", "fname"]]
     return df_picks, vps_outliers
+
 
 def summary(df_picks, p_out, s_out, savepath):
     pssr = np.nansum([i ** 2 for i in df_picks['P_res'][df_picks['P_inrange']]])
@@ -546,9 +589,12 @@ for t in threshold:
                   how='left', on=['event_id', 'station', 'network', 'channel'])
 
     df = pick2time(df)
+    df = dropNAs(df)
+    df = timeThresholder(df, tmin, tmax)
+
     df = resCalculator(df)
     headers = ['network', 'event_id', 'station', 'channel', 'samples', 'delta', 'start', 'end', 'P_residual', 'P_time',
-               'P_phasenet', 'tp_prob', 'itp', 'S_residual', 'S_time', 'S_phasenet', 'ts_prob', 'its',
+               'P_phasenet', 'tp_prob', 'itp', 'S_residual', 'S_time', 'S_phasenet', 'ts_prob', 'its', 'tmin', 'tmax',
                'filter_method', 'fname']
     df = df[headers].sort_values(['event_id', 'station'])
 
@@ -557,7 +603,7 @@ for t in threshold:
     df_picks, p_out, s_out = outliers(df_picks, outlier_method, outlier_path)
     df_picks, vps_out = vpsOutliers(df_picks, p_out, s_out, vps_method, outlier_path)
 
-    summary(df_picks, PN_pick_method, outlier_method, vps_method, t, t, plot_path)
+    summary(df_picks, p_out, s_out, plot_path)
 
     pssr = np.nansum([i ** 2 for i in df_picks['P_res'][df_picks['P_inrange']]])
     sssr = np.nansum([i ** 2 for i in df_picks['S_res'][df_picks['S_inrange']]])
@@ -602,15 +648,11 @@ sum_dict = {
     "S_median_res": s_median,
     "nP_out": P_out,
     "nS_out": S_out,
-    "PN_pick_method": [PN_pick_method]*len(threshold),
-    "outlier_method": [outlier_method]*len(threshold),
-    "filter_method": [df_picks['filter_method'][0]]*len(threshold)
+    "PN_pick_method": [PN_pick_method] * len(threshold),
+    "outlier_method": [outlier_method] * len(threshold),
+    "filter_method": [df_picks['filter_method'][0]] * len(threshold)
 }
 
 df_sum = pd.DataFrame.from_dict(sum_dict)
-df_sum.to_pickle(os.path.join(test_path, test_name+".pickle"))
-df_sum.to_csv(os.path.join(test_path, test_name+".csv"), index=False)
-
-
-
-
+df_sum.to_pickle(os.path.join(test_path, test_name + ".pickle"))
+df_sum.to_csv(os.path.join(test_path, test_name + ".csv"), index=False)
