@@ -457,12 +457,12 @@ def vpsOutliers(df_picks, p_out, s_out, method, savepath):
          "vps", "vps_inrange", "pick_method", "ol_method", "vps_ol_method", "filter_method", "fname"]]
     return df_picks, vps_outliers
 
-def summary(df_picks, pick_method, outlier_method, vps_method, p_thresh, s_thresh, savepath):
+def summary(df_picks, p_out, s_out, savepath):
     pssr = np.nansum([i ** 2 for i in df_picks['P_res'][df_picks['P_inrange']]])
     sssr = np.nansum([i ** 2 for i in df_picks['S_res'][df_picks['S_inrange']]])
 
-    Np = np.count_nonzero(~np.isnan(df_picks['P_res'][df_picks['P_inrange']]))
-    Ns = np.count_nonzero(~np.isnan(df_picks['S_res'][df_picks['S_inrange']]))
+    Np = df_picks['P_res'][df_picks['P_inrange']].count()
+    Ns = df_picks['S_res'][df_picks['S_inrange']].count()
 
     prms = np.sqrt(pssr / (Np - 1))
     srms = np.sqrt(sssr / (Ns - 1))
@@ -475,55 +475,56 @@ def summary(df_picks, pick_method, outlier_method, vps_method, p_thresh, s_thres
 
         print("Number of arrivals = ", len(df_picks), file=f)
         print("RMS = ", rms, file=f)
-        print("Mean P residual = ", np.nanmean(df_picks['P_res'][df_picks['P_inrange']]), file=f)
-        print("Mean S residual = ", np.nanmean(df_picks['S_res'][df_picks['S_inrange']]), file=f)
-        print("---------------------------------------------------------------------------------", file=f)
-        print("P picks = {}   ({}%)".format(df_picks['P_phasenet'][df_picks['P_inrange']].count(),
-                                            (df_picks['P_phasenet'][df_picks['P_inrange']].count() / len(
-                                                df_picks)) * 100), file=f)
-        print("S picks = {}   ({}%)".format(df_picks['S_phasenet'][df_picks['S_inrange']].count(),
-                                            (df_picks['S_phasenet'][df_picks['S_inrange']].count() / len(
-                                                df_picks)) * 100), file=f)
         print("P-RMS = ", prms, file=f)
         print("S-RMS = ", srms, file=f)
+        print("---------------------------------------------------------------------------------", file=f)
+        print("P picks = {}   ({}%)".format(Np, (Np / len(df_picks)) * 100), file=f)
+        print("S picks = {}   ({}%)".format(Ns, (Ns / len(df_picks)) * 100), file=f)
+        print("Mean P residual = ", np.nanmean(df_picks['P_res'][df_picks['P_inrange']]), file=f)
+        print("Mean S residual = ", np.nanmean(df_picks['S_res'][df_picks['S_inrange']]), file=f)
+        print("Median P residual = ", np.nanmedian(df_picks['P_res'][df_picks['P_inrange']]), file=f)
+        print("Median S residual = ", np.nanmedian(df_picks['S_res'][df_picks['S_inrange']]), file=f)
         print("P outliers excluded = {}".format(len(p_out)), file=f)
         print("S outliers excluded = {}".format(len(s_out)), file=f)
         print("---------------------------------------------------------------------------------", file=f)
         print("PARAMETERS", file=f)
-        print("P threshold = ", p_thresh, file=f)
-        print("S threshold = ", s_thresh, file=f)
-        print("pick method = ", pick_method, file=f)
-        print("residual outlier method = ", outlier_method, file=f)
-        print("vps outlier method = {}".format(vps_method), file=f)
-        print("filter method = {}".format(df_picks['filter_method'][0]), file=f)
+        print("P threshold = ", df_picks['P_thresh'].iloc[0], file=f)
+        print("S threshold = ", df_picks['S_thresh'].iloc[0], file=f)
+        print("tmin = ", df_picks['tmin'].iloc[0], file=f)
+        print("tmax = ", df_picks['tmax'].iloc[0], file=f)
+        print("pick method = ", df_picks['pick_method'].iloc[0], file=f)
+        print("residual outlier method = ", df_picks['ol_method'].iloc[0], file=f)
+        print("vps outlier method = {}".format(df_picks['vps_ol_method'].iloc[0]), file=f)
+        print("filter method = {}".format(df_picks['filter_method'].iloc[0]), file=f)
         print("=================================================================================", file=f)
 
         print(datetime.datetime.now())
 
         print("Number of arrivals = ", len(df_picks))
         print("RMS = ", rms)
-        print("Mean P residual = ", np.nanmean(df_picks['P_res'][df_picks['P_inrange']]))
-        print("Mean S residual = ", np.nanmean(df_picks['S_res'][df_picks['S_inrange']]))
-        print("---------------------------------------------------------------------------------")
-        print("P picks = {}   ({}%)".format(df_picks['P_phasenet'][df_picks['P_inrange']].count(),
-                                            (df_picks['P_phasenet'][df_picks['P_inrange']].count() / len(
-                                                df_picks)) * 100))
-        print("S picks = {}   ({}%)".format(df_picks['S_phasenet'][df_picks['S_inrange']].count(),
-                                            (df_picks['S_phasenet'][df_picks['S_inrange']].count() / len(
-                                                df_picks)) * 100))
         print("P-RMS = ", prms)
         print("S-RMS = ", srms)
+        print("---------------------------------------------------------------------------------")
+        print("P picks = {}   ({}%)".format(Np, (Np / len(df_picks)) * 100))
+        print("S picks = {}   ({}%)".format(Ns, (Ns / len(df_picks)) * 100))
+        print("Mean P residual = ", np.nanmean(df_picks['P_res'][df_picks['P_inrange']]))
+        print("Mean S residual = ", np.nanmean(df_picks['S_res'][df_picks['S_inrange']]))
+        print("Median P residual = ", np.nanmedian(df_picks['P_res'][df_picks['P_inrange']]))
+        print("Median S residual = ", np.nanmedian(df_picks['S_res'][df_picks['S_inrange']]))
         print("P outliers excluded = {}".format(len(p_out)))
         print("S outliers excluded = {}".format(len(s_out)))
         print("---------------------------------------------------------------------------------")
         print("PARAMETERS")
-        print("P threshold = ", p_thresh)
-        print("S threshold = ", s_thresh)
-        print("pick method = ", pick_method)
-        print("residual outlier method = ", outlier_method)
-        print("vps outlier method = {}".format(vps_method))
-        print("filter method = {}".format(df_picks['filter_method'][0]))
+        print("P threshold = ", df_picks['P_thresh'].iloc[0])
+        print("S threshold = ", df_picks['S_thresh'].iloc[0])
+        print("tmin = ", df_picks['tmin'].iloc[0])
+        print("tmax = ", df_picks['tmax'].iloc[0])
+        print("pick method = ", df_picks['pick_method'].iloc[0])
+        print("residual outlier method = ", df_picks['ol_method'].iloc[0])
+        print("vps outlier method = {}".format(df_picks['vps_ol_method'].iloc[0]))
+        print("filter method = {}".format(df_picks['filter_method'].iloc[0]))
         print("=================================================================================")
+
 
 N = []
 rms_l = []
