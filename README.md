@@ -1,5 +1,5 @@
 # Kaikoura Earthquake
-Contains scripts to read, filter, and process geoligical data.  
+Contains scripts to read, filter, and process seismic waveform data.  
   
 The waveform_dsp.py script creates displays the probability output from the PhaseNet neural network seismic wave detection algorithm and compares it with human picks. Sample plots are shown in the repository. 
   
